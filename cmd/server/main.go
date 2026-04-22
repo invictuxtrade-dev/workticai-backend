@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 
 	httpapi "whatsapp-sales-os-enterprise/backend/internal/httpapi"
 )
@@ -14,6 +15,11 @@ func main() {
 		log.Fatal(err)
 	}
 
-	fmt.Println("🚀 backend running on http://localhost:8090")
-	log.Fatal(http.ListenAndServe(":8090", srv.Router))
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8090"
+	}
+
+	fmt.Printf("🚀 backend running on http://localhost:%s\n", port)
+	log.Fatal(http.ListenAndServe(":"+port, srv.Router))
 }
