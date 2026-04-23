@@ -57,9 +57,9 @@ func (s *Server) routes() {
 	secured.HandleFunc("/clients/{id}", requireRole("admin")(s.handleUpdateClient)).Methods("PUT", "OPTIONS")
 	secured.HandleFunc("/clients/{id}", requireRole("admin")(s.handleDeleteClient)).Methods("DELETE", "OPTIONS")
 
-	secured.HandleFunc("/users", s.handleListUsers).Methods("GET", "OPTIONS")
-	secured.HandleFunc("/users", s.handleCreateUser).Methods("POST", "OPTIONS")
-	secured.HandleFunc("/users/{id}", requireRole("admin", "client_admin")(s.handleDeleteUser)).Methods("DELETE", "OPTIONS")
+	secured.HandleFunc("/users", requireRole("admin")(s.handleListUsers)).Methods("GET", "OPTIONS")
+	secured.HandleFunc("/users", requireRole("admin")(s.handleCreateUser)).Methods("POST", "OPTIONS")
+	secured.HandleFunc("/users/{id}", requireRole("admin")(s.handleDeleteUser)).Methods("DELETE", "OPTIONS")
 
 	secured.HandleFunc("/templates", s.handleListTemplates).Methods("GET", "OPTIONS")
 	secured.HandleFunc("/templates", s.handleCreateTemplate).Methods("POST", "OPTIONS")
