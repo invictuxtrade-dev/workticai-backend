@@ -24,6 +24,7 @@ func (s *Server) routes() {
 	r.HandleFunc("/api/auth/bootstrap", s.handleBootstrap).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/auth/login", s.handleLogin).Methods("POST", "OPTIONS")
 	r.HandleFunc("/api/auth/me", s.authRequired(s.handleMe)).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/auth/register-client", s.handleRegisterClient).Methods("POST", "OPTIONS")
 
 	// Público para tracking de landings
 	r.HandleFunc("/api/public/funnel/event", s.handleTrackFunnelEvent).Methods("POST", "OPTIONS")
@@ -1393,4 +1394,62 @@ func (s *Server) handleSocialUploadImage(w http.ResponseWriter, r *http.Request)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"image_url": imageURL})
+}
+
+func (s *Server) handleRegisterClient(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name        string `json:"name"`
+		Email       string `json:"email"`
+		Password    string `json:"password"`
+		CompanyName string `json:"company_name"`
+		Phone       string `json:"phone"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+
+	body.Name = strings.TrimSpace(body.Name)
+	body.Email = strings.TrimSpace(strings.ToLower(body.Email))
+	body.Password = strings.TrimSpace(body.Password)
+	body.CompanyName = strings.TrimSpace(body.CompanyName)
+	body.Phone = strings.TrimSpace(body.Phone)
+
+	if body.Name == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "name required"})
+		return
+	}
+	if body.CompanyName == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "company_name required"})
+		return
+	}
+	if body.Email == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "email required"})
+		return
+	}
+	if body.Password == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "password required"})
+		return
+	}
+
+	// 1) crear cliente
+	client, err := s.Manager.CreateClient(body.CompanyName, body.Email, body.Phone, "pro")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+
+	// 2) crear usuario principal del cliente
+	user, token, err := s.Auth.CreateUser(client.ID, body.Name, body.Email, body.Password, "client_admin")
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"token":  token,
+		"user":   user,
+		"client": client,
+	})
 }
