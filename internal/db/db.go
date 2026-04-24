@@ -70,6 +70,8 @@ func Open(path string) (*sql.DB, error) {
 	`ALTER TABLE social_posts ADD COLUMN image_prompt TEXT DEFAULT ''`,
 	`ALTER TABLE social_posts ADD COLUMN facebook_post_id TEXT DEFAULT ''`,
 	`ALTER TABLE social_posts ADD COLUMN published_at TIMESTAMP NULL`,
+
+	`ALTER TABLE clients ADD COLUMN plan TEXT NOT NULL DEFAULT ''`,
 }
 
 	for _, q := range softMigrations {
@@ -106,11 +108,56 @@ func migrate(db *sql.DB) error {
 			name TEXT NOT NULL,
 			email TEXT NOT NULL DEFAULT '',
 			phone TEXT NOT NULL DEFAULT '',
-			plan TEXT NOT NULL DEFAULT 'pro',
+			plan TEXT NOT NULL DEFAULT '',
 			status TEXT NOT NULL DEFAULT 'active',
 			created_at TIMESTAMP NOT NULL,
 			updated_at TIMESTAMP NOT NULL
 		);`,
+
+			`CREATE TABLE IF NOT EXISTS plans (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		slug TEXT NOT NULL UNIQUE,
+		description TEXT NOT NULL DEFAULT '',
+		price_monthly REAL NOT NULL DEFAULT 0,
+		price_yearly REAL NOT NULL DEFAULT 0,
+		features TEXT NOT NULL DEFAULT '[]',
+		is_free INTEGER NOT NULL DEFAULT 0,
+		is_active INTEGER NOT NULL DEFAULT 1,
+		sort_order INTEGER NOT NULL DEFAULT 0,
+		created_at TIMESTAMP NOT NULL,
+		updated_at TIMESTAMP NOT NULL
+	);`,
+
+	`CREATE TABLE IF NOT EXISTS subscriptions (
+		id TEXT PRIMARY KEY,
+		client_id TEXT NOT NULL,
+		plan_id TEXT NOT NULL,
+		plan_slug TEXT NOT NULL,
+		status TEXT NOT NULL DEFAULT 'pending',
+		billing_cycle TEXT NOT NULL DEFAULT 'monthly',
+		amount REAL NOT NULL DEFAULT 0,
+		payment_method TEXT NOT NULL DEFAULT 'usdt_bep20',
+		tx_hash TEXT NOT NULL DEFAULT '',
+		wallet_address TEXT NOT NULL DEFAULT '',
+		paid_at TIMESTAMP NULL,
+		starts_at TIMESTAMP NULL,
+		expires_at TIMESTAMP NULL,
+		validated_by TEXT NOT NULL DEFAULT '',
+		validation_notes TEXT NOT NULL DEFAULT '',
+		created_at TIMESTAMP NOT NULL,
+		updated_at TIMESTAMP NOT NULL
+	);`,
+
+	`CREATE TABLE IF NOT EXISTS plan_config (
+		id TEXT PRIMARY KEY,
+		usdt_bep20_wallet TEXT NOT NULL DEFAULT '',
+		card_payments_enabled INTEGER NOT NULL DEFAULT 0,
+		default_free_plan_slug TEXT NOT NULL DEFAULT 'free',
+		require_plan_selection INTEGER NOT NULL DEFAULT 1,
+		updated_at TIMESTAMP NOT NULL
+	);`,
+
 
 		`CREATE TABLE IF NOT EXISTS bots (
 			id TEXT PRIMARY KEY,

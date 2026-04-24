@@ -103,6 +103,15 @@ func (s *Server) routes() {
 	secured.HandleFunc("/social/logs", s.handleSocialLogs).Methods("GET", "OPTIONS")
 	secured.HandleFunc("/social/generate-image", s.handleSocialGenerateImage).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/social/upload-image", s.handleSocialUploadImage).Methods("POST", "OPTIONS")
+
+	secured.HandleFunc("/plans", s.handlePlans).Methods("GET", "OPTIONS")
+	secured.HandleFunc("/billing/config", requireRole("admin")(s.handleGetBillingConfig)).Methods("GET", "OPTIONS")
+	secured.HandleFunc("/billing/config", requireRole("admin")(s.handleUpdateBillingConfig)).Methods("PUT", "OPTIONS")
+	secured.HandleFunc("/subscriptions/current", s.handleCurrentSubscription).Methods("GET", "OPTIONS")
+	secured.HandleFunc("/subscriptions/select", s.handleSelectPlan).Methods("POST", "OPTIONS")
+	secured.HandleFunc("/subscriptions/pay", s.handleSubmitTxHash).Methods("POST", "OPTIONS")
+	secured.HandleFunc("/subscriptions/pending", requireRole("admin")(s.handlePendingSubscriptions)).Methods("GET", "OPTIONS")
+	secured.HandleFunc("/subscriptions/{id}/approve", requireRole("admin")(s.handleApproveSubscription)).Methods("POST", "OPTIONS")
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
@@ -1434,7 +1443,7 @@ func (s *Server) handleRegisterClient(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 1) crear cliente
-	client, err := s.Manager.CreateClient(body.CompanyName, body.Email, body.Phone, "pro")
+	client, err := s.Manager.CreateClient(body.CompanyName, body.Email, body.Phone, "")
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
@@ -1452,4 +1461,130 @@ func (s *Server) handleRegisterClient(w http.ResponseWriter, r *http.Request) {
 		"user":   user,
 		"client": client,
 	})
+}
+
+func (s *Server) handlePlans(w http.ResponseWriter, r *http.Request) {
+	plans, err := s.Billing.ListPlans()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, plans)
+}
+
+func (s *Server) handleGetBillingConfig(w http.ResponseWriter, r *http.Request) {
+	cfg, err := s.Billing.GetPlanConfig()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, cfg)
+}
+
+func (s *Server) handleUpdateBillingConfig(w http.ResponseWriter, r *http.Request) {
+	var cfg models.PlanConfig
+	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+	if err := s.Billing.UpdatePlanConfig(cfg); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"success": true})
+}
+
+func (s *Server) handleCurrentSubscription(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	sub, err := s.Billing.GetLatestSubscription(u.ClientID)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"subscription": nil})
+		return
+	}
+	writeJSON(w, http.StatusOK, sub)
+}
+
+func (s *Server) handleSelectPlan(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	var body struct {
+		PlanSlug     string `json:"plan_slug"`
+		BillingCycle string `json:"billing_cycle"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+	if body.BillingCycle == "" {
+		body.BillingCycle = "monthly"
+	}
+	sub, err := s.Billing.SelectPlan(u.ClientID, body.PlanSlug, body.BillingCycle)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusCreated, sub)
+}
+
+func (s *Server) handleSubmitTxHash(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		SubscriptionID string `json:"subscription_id"`
+		TxHash         string `json:"tx_hash"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+	if strings.TrimSpace(body.SubscriptionID) == "" || strings.TrimSpace(body.TxHash) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "subscription_id and tx_hash required"})
+		return
+	}
+	if err := s.Billing.SubmitTxHash(body.SubscriptionID, body.TxHash); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"success": true})
+}
+
+func (s *Server) handlePendingSubscriptions(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.DB.Query(`
+		SELECT id, client_id, plan_id, plan_slug, status, billing_cycle, amount, payment_method, tx_hash, wallet_address,
+		       paid_at, starts_at, expires_at, validated_by, validation_notes, created_at, updated_at
+		FROM subscriptions
+		WHERE status='pending'
+		ORDER BY created_at DESC
+	`)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	out := []models.Subscription{}
+	for rows.Next() {
+		var ssub models.Subscription
+		if err := rows.Scan(
+			&ssub.ID, &ssub.ClientID, &ssub.PlanID, &ssub.PlanSlug, &ssub.Status, &ssub.BillingCycle, &ssub.Amount, &ssub.PaymentMethod, &ssub.TxHash, &ssub.WalletAddress,
+			&ssub.PaidAt, &ssub.StartsAt, &ssub.ExpiresAt, &ssub.ValidatedBy, &ssub.ValidationNotes, &ssub.CreatedAt, &ssub.UpdatedAt,
+		); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+		out = append(out, ssub)
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) handleApproveSubscription(w http.ResponseWriter, r *http.Request) {
+	admin := currentUser(r)
+	var body struct {
+		Notes string `json:"notes"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+
+	id := mux.Vars(r)["id"]
+	if err := s.Billing.ApproveSubscription(id, admin.ID, body.Notes); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"success": true})
 }

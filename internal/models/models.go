@@ -226,3 +226,47 @@ type SocialLog struct {
 	Message    string    `json:"message"`
 	CreatedAt  time.Time `json:"created_at"`
 }
+
+type Plan struct {
+	ID              string    `json:"id"`
+	Name            string    `json:"name"`
+	Slug            string    `json:"slug"`
+	Description     string    `json:"description"`
+	PriceMonthly    float64   `json:"price_monthly"`
+	PriceYearly     float64   `json:"price_yearly"`
+	Features        string    `json:"features"` // JSON string
+	IsFree          bool      `json:"is_free"`
+	IsActive        bool      `json:"is_active"`
+	SortOrder       int       `json:"sort_order"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+type Subscription struct {
+	ID               string     `json:"id"`
+	ClientID         string     `json:"client_id"`
+	PlanID           string     `json:"plan_id"`
+	PlanSlug         string     `json:"plan_slug"`
+	Status           string     `json:"status"` // pending | active | expired | cancelled
+	BillingCycle     string     `json:"billing_cycle"` // monthly | yearly
+	Amount           float64    `json:"amount"`
+	PaymentMethod    string     `json:"payment_method"` // usdt_bep20
+	TxHash           string     `json:"tx_hash"`
+	WalletAddress    string     `json:"wallet_address"`
+	PaidAt           *time.Time `json:"paid_at,omitempty"`
+	StartsAt         *time.Time `json:"starts_at,omitempty"`
+	ExpiresAt        *time.Time `json:"expires_at,omitempty"`
+	ValidatedBy      string     `json:"validated_by"`
+	ValidationNotes  string     `json:"validation_notes"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+}
+
+type PlanConfig struct {
+	ID                    string    `json:"id"`
+	USDTBEP20Wallet       string    `json:"usdt_bep20_wallet"`
+	CardPaymentsEnabled   bool      `json:"card_payments_enabled"`
+	DefaultFreePlanSlug   string    `json:"default_free_plan_slug"`
+	RequirePlanSelection  bool      `json:"require_plan_selection"`
+	UpdatedAt             time.Time `json:"updated_at"`
+}

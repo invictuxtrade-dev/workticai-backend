@@ -40,7 +40,6 @@ func (s *Server) withCORS(next http.Handler) http.Handler {
 
 func (s *Server) authRequired(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// dejar pasar preflight
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
 			return
@@ -57,6 +56,27 @@ func (s *Server) authRequired(next http.HandlerFunc) http.HandlerFunc {
 		if err != nil {
 			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid session"})
 			return
+		}
+
+		// admin siempre entra
+		if user.Role != "admin" {
+			var plan string
+			_ = s.DB.QueryRow(`SELECT plan FROM clients WHERE id=?`, user.ClientID).Scan(&plan)
+
+			allowedWithoutPlan := map[string]bool{
+				"/api/auth/me":              true,
+				"/api/plans":                true,
+				"/api/subscriptions/current": true,
+				"/api/subscriptions/select": true,
+				"/api/subscriptions/pay":    true,
+			}
+
+			if strings.TrimSpace(plan) == "" && !allowedWithoutPlan[r.URL.Path] {
+				writeJSON(w, http.StatusPaymentRequired, map[string]any{
+					"error": "plan_required",
+				})
+				return
+			}
 		}
 
 		ctx := context.WithValue(r.Context(), userKey, user)
