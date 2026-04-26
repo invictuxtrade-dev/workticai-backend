@@ -337,6 +337,12 @@ if err := json.Unmarshal([]byte(raw), &plan); err != nil {
 	}
 }
 
+
+	plan = normalizeCampaignPlan(plan, product, offer, target, country, currency, budgetDaily, ticketAverage)
+
+	return plan, nil
+}
+
 func (s *AdsService) repairAIJSON(ctx context.Context, broken string) (string, error) {
 	system := `Eres un reparador experto de JSON.
 Debes recibir texto que intenta ser JSON y devolver SOLO JSON válido.
@@ -359,12 +365,6 @@ Solo corrige comillas, comas, escapes y estructura.`
 			{"role": "user", "content": user},
 		},
 	)
-}
-
-
-	plan = normalizeCampaignPlan(plan, product, offer, target, country, currency, budgetDaily, ticketAverage)
-
-	return plan, nil
 }
 
 func cleanAIJSON(s string) string {
