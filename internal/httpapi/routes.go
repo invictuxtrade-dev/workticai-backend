@@ -1672,7 +1672,7 @@ func (s *Server) handleCreateAdsCampaign(w http.ResponseWriter, r *http.Request)
 	u := currentUser(r)
 
 	var body struct {
-		Plan models.AdsCampaignPlan `json:"plan"`
+		Plan services.AdsCampaignPlan `json:"plan"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -1686,35 +1686,8 @@ func (s *Server) handleCreateAdsCampaign(w http.ResponseWriter, r *http.Request)
 	}
 
 	b, _ := json.Marshal(body.Plan)
-	id, err := s.Ads.SaveCampaign(clientID, services.AdsCampaignPlan{
-		Name:              body.Plan.Name,
-		Objective:         body.Plan.Objective,
-		Product:           body.Plan.Product,
-		Offer:             body.Plan.Offer,
-		TargetAudience:    body.Plan.TargetAudience,
-		Locations:         body.Plan.Locations,
-		AgeRange:          body.Plan.AgeRange,
-		Interests:         body.Plan.Interests,
-		PainPoints:        body.Plan.PainPoints,
-		Angles:            body.Plan.Angles,
-		PrimaryText:       body.Plan.PrimaryText,
-		Headline:          body.Plan.Headline,
-		Description:       body.Plan.Description,
-		CTA:               body.Plan.CTA,
-		CreativePrompt:    body.Plan.CreativePrompt,
-		LandingSuggestion: body.Plan.LandingSuggestion,
-		WhatsAppScript:    body.Plan.WhatsAppScript,
-		BudgetDaily:       body.Plan.BudgetDaily,
-		BudgetMonthly:     body.Plan.BudgetMonthly,
-		EstimatedReach:    body.Plan.EstimatedReach,
-		EstimatedLeads:    body.Plan.EstimatedLeads,
-		EstimatedCPL:      body.Plan.EstimatedCPL,
-		EstimatedSales:    body.Plan.EstimatedSales,
-		EstimatedRevenue:  body.Plan.EstimatedRevenue,
-		EstimatedROI:      body.Plan.EstimatedROI,
-		Recommendations:   body.Plan.Recommendations,
-	}, string(b))
 
+	id, err := s.Ads.SaveCampaign(clientID, body.Plan, string(b))
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
