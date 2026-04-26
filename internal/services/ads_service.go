@@ -324,9 +324,43 @@ Condiciones:
 	raw = cleanAIJSON(raw)
 
 	var plan AdsCampaignPlan
-	if err := json.Unmarshal([]byte(raw), &plan); err != nil {
-		return AdsCampaignPlan{}, fmt.Errorf("respuesta IA inválida: %w | raw: %s", err, raw)
+if err := json.Unmarshal([]byte(raw), &plan); err != nil {
+	fixed, repairErr := s.repairAIJSON(ctx, raw)
+	if repairErr != nil {
+		return AdsCampaignPlan{}, fmt.Errorf("respuesta IA inválida")
 	}
+
+	fixed = cleanAIJSON(fixed)
+
+	if err2 := json.Unmarshal([]byte(fixed), &plan); err2 != nil {
+		return AdsCampaignPlan{}, fmt.Errorf("respuesta IA inválida")
+	}
+}
+
+func (s *AdsService) repairAIJSON(ctx context.Context, broken string) (string, error) {
+	system := `Eres un reparador experto de JSON.
+Debes recibir texto que intenta ser JSON y devolver SOLO JSON válido.
+No expliques nada.
+No uses markdown.
+No agregues campos nuevos.
+Solo corrige comillas, comas, escapes y estructura.`
+
+	user := fmt.Sprintf(`Repara este JSON y devuelve únicamente JSON válido:
+
+%s`, broken)
+
+	return s.AI.doHeavyCompletion(
+		ctx,
+		"",
+		0.1,
+		4500,
+		[]map[string]string{
+			{"role": "system", "content": system},
+			{"role": "user", "content": user},
+		},
+	)
+}
+
 
 	plan = normalizeCampaignPlan(plan, product, offer, target, country, currency, budgetDaily, ticketAverage)
 
