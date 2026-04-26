@@ -22,14 +22,14 @@ func NewAdsService(db *sql.DB, ai *AIService) *AdsService {
 }
 
 type AdsAdSet struct {
-	Name      string   `json:"name"`
-	Location []string `json:"locations"`
-	AgeRange string   `json:"age_range"`
-	Gender   string   `json:"gender"`
-	Interests []string `json:"interests"`
-	Behaviors []string `json:"behaviors"`
+	Name       string   `json:"name"`
+	Location   []string `json:"locations"`
+	AgeRange   string   `json:"age_range"`
+	Gender     string   `json:"gender"`
+	Interests  []string `json:"interests"`
+	Behaviors  []string `json:"behaviors"`
 	Exclusions []string `json:"exclusions"`
-	Message  string   `json:"message"`
+	Message    string   `json:"message"`
 }
 
 type AdsCreativeVariant struct {
@@ -43,32 +43,58 @@ type AdsCreativeVariant struct {
 }
 
 type AdsFunnelStrategy struct {
-	Destination          string   `json:"destination"` // whatsapp | landing | form
-	RecommendedBotFlow   string   `json:"recommended_bot_flow"`
-	LandingStructure     []string `json:"landing_structure"`
-	LeadQualification    []string `json:"lead_qualification"`
-	FollowUpSequence     []string `json:"follow_up_sequence"`
-	TrackingEvents       []string `json:"tracking_events"`
+	Destination        string   `json:"destination"`
+	RecommendedBotFlow string   `json:"recommended_bot_flow"`
+	LandingStructure   []string `json:"landing_structure"`
+	LeadQualification  []string `json:"lead_qualification"`
+	FollowUpSequence   []string `json:"follow_up_sequence"`
+	TrackingEvents     []string `json:"tracking_events"`
 }
 
 type AdsROIProjection struct {
-	Currency          string  `json:"currency"`
-	BudgetDaily       float64 `json:"budget_daily"`
-	BudgetMonthly     float64 `json:"budget_monthly"`
-	EstimatedCPM      float64 `json:"estimated_cpm"`
-	EstimatedCPC      float64 `json:"estimated_cpc"`
-	EstimatedCTR      float64 `json:"estimated_ctr"`
-	EstimatedCPL      float64 `json:"estimated_cpl"`
-	EstimatedReach    int     `json:"estimated_reach"`
-	EstimatedClicks   int     `json:"estimated_clicks"`
-	EstimatedLeads    int     `json:"estimated_leads"`
-	ConversionRate    float64 `json:"conversion_rate"`
-	EstimatedSales    int     `json:"estimated_sales"`
-	TicketAverage      float64 `json:"ticket_average"`
-	EstimatedRevenue  float64 `json:"estimated_revenue"`
-	EstimatedProfit   float64 `json:"estimated_profit"`
-	EstimatedROI      float64 `json:"estimated_roi"`
-	BreakEvenCPL      float64 `json:"break_even_cpl"`
+	Currency         string  `json:"currency"`
+	BudgetDaily      float64 `json:"budget_daily"`
+	BudgetMonthly    float64 `json:"budget_monthly"`
+	EstimatedCPM     float64 `json:"estimated_cpm"`
+	EstimatedCPC     float64 `json:"estimated_cpc"`
+	EstimatedCTR     float64 `json:"estimated_ctr"`
+	EstimatedCPL     float64 `json:"estimated_cpl"`
+	EstimatedReach   int     `json:"estimated_reach"`
+	EstimatedClicks  int     `json:"estimated_clicks"`
+	EstimatedLeads   int     `json:"estimated_leads"`
+	ConversionRate   float64 `json:"conversion_rate"`
+	EstimatedSales   int     `json:"estimated_sales"`
+	TicketAverage     float64 `json:"ticket_average"`
+	EstimatedRevenue float64 `json:"estimated_revenue"`
+	EstimatedProfit  float64 `json:"estimated_profit"`
+	EstimatedROI     float64 `json:"estimated_roi"`
+	BreakEvenCPL     float64 `json:"break_even_cpl"`
+}
+
+type AdsROIScenario struct {
+	Name                string  `json:"name"`
+	Currency            string  `json:"currency"`
+	BudgetDaily         float64 `json:"budget_daily"`
+	BudgetMonthly       float64 `json:"budget_monthly"`
+	EstimatedCPM        float64 `json:"estimated_cpm"`
+	EstimatedCTR        float64 `json:"estimated_ctr"`
+	EstimatedCPC        float64 `json:"estimated_cpc"`
+	LandingConvRate     float64 `json:"landing_conversion_rate"`
+	LeadCloseRate       float64 `json:"lead_close_rate"`
+	EstimatedReach      int     `json:"estimated_reach"`
+	EstimatedClicks     int     `json:"estimated_clicks"`
+	EstimatedLeads      int     `json:"estimated_leads"`
+	EstimatedCPL        float64 `json:"estimated_cpl"`
+	EstimatedSales      int     `json:"estimated_sales"`
+	TicketAverage        float64 `json:"ticket_average"`
+	EstimatedRevenue    float64 `json:"estimated_revenue"`
+	EstimatedProfit     float64 `json:"estimated_profit"`
+	EstimatedROI        float64 `json:"estimated_roi"`
+	BreakEvenCPL        float64 `json:"break_even_cpl"`
+	Recommendation      string  `json:"recommendation"`
+	Decision            string  `json:"decision"`
+	ScaleSignal         string  `json:"scale_signal"`
+	OptimizationTrigger string  `json:"optimization_trigger"`
 }
 
 type AdsCampaignPlan struct {
@@ -90,30 +116,37 @@ type AdsCampaignPlan struct {
 	CreativePrompt     string   `json:"creative_prompt"`
 	LandingSuggestion string   `json:"landing_suggestion"`
 	WhatsAppScript    string   `json:"whatsapp_script"`
-	BudgetDaily        float64  `json:"budget_daily"`
-	BudgetMonthly      float64  `json:"budget_monthly"`
-	EstimatedReach     int      `json:"estimated_reach"`
-	EstimatedLeads     int      `json:"estimated_leads"`
-	EstimatedCPL       float64  `json:"estimated_cpl"`
-	EstimatedSales     int      `json:"estimated_sales"`
-	EstimatedRevenue   float64  `json:"estimated_revenue"`
-	EstimatedROI       float64  `json:"estimated_roi"`
-	Recommendations    []string `json:"recommendations"`
 
-	// Campos PRO nuevos
-	CampaignSummary      string               `json:"campaign_summary"`
-	MarketAnalysis       string               `json:"market_analysis"`
-	CustomerAvatar       string               `json:"customer_avatar"`
-	ValueProposition     string               `json:"value_proposition"`
-	AdSets               []AdsAdSet           `json:"adsets"`
-	CreativeVariants     []AdsCreativeVariant `json:"creative_variants"`
-	Funnel               AdsFunnelStrategy    `json:"funnel"`
-	ROI                  AdsROIProjection     `json:"roi"`
-	OptimizationPlan     []string             `json:"optimization_plan"`
-	LaunchChecklist      []string             `json:"launch_checklist"`
-	TestingPlan          []string             `json:"testing_plan"`
-	RiskWarnings         []string             `json:"risk_warnings"`
-	NextActions          []string             `json:"next_actions"`
+	BudgetDaily      float64 `json:"budget_daily"`
+	BudgetMonthly    float64 `json:"budget_monthly"`
+	EstimatedReach   int     `json:"estimated_reach"`
+	EstimatedLeads   int     `json:"estimated_leads"`
+	EstimatedCPL     float64 `json:"estimated_cpl"`
+	EstimatedSales   int     `json:"estimated_sales"`
+	EstimatedRevenue float64 `json:"estimated_revenue"`
+	EstimatedROI     float64 `json:"estimated_roi"`
+
+	Recommendations []string `json:"recommendations"`
+
+	CampaignSummary  string               `json:"campaign_summary"`
+	MarketAnalysis   string               `json:"market_analysis"`
+	CustomerAvatar   string               `json:"customer_avatar"`
+	ValueProposition string               `json:"value_proposition"`
+	AdSets           []AdsAdSet           `json:"adsets"`
+	CreativeVariants []AdsCreativeVariant `json:"creative_variants"`
+	Funnel           AdsFunnelStrategy    `json:"funnel"`
+	ROI              AdsROIProjection     `json:"roi"`
+	ROIScenarios     []AdsROIScenario     `json:"roi_scenarios"`
+
+	OptimizationPlan []string `json:"optimization_plan"`
+	LaunchChecklist  []string `json:"launch_checklist"`
+	TestingPlan      []string `json:"testing_plan"`
+	RiskWarnings     []string `json:"risk_warnings"`
+	NextActions      []string `json:"next_actions"`
+
+	AutomationRules []string `json:"automation_rules"`
+	ScaleRules      []string `json:"scale_rules"`
+	KillRules       []string `json:"kill_rules"`
 }
 
 func (s *AdsService) GenerateCampaignPlan(
@@ -153,31 +186,19 @@ func (s *AdsService) GenerateCampaignPlan(
 
 	currency := "USD"
 
-	system := `Eres un experto ELITE en Meta Ads, psicología de ventas, funnels, WhatsApp automation, copywriting de respuesta directa, estrategia de adquisición y ROI tracking.
+	system := `Eres un experto ELITE en Meta Ads, funnels, psicología de ventas, WhatsApp automation, copywriting de respuesta directa y estrategia de adquisición.
 
-Tu trabajo es crear una campaña publicitaria profesional para un negocio real. No eres un generador básico de copy: eres un media buyer senior que diseña una máquina de generación de leads.
+Tu trabajo es crear una campaña publicitaria profesional para generar leads y ventas.
 
-Debes pensar en:
-- Avatar de cliente
-- Oferta
-- Dolor
-- Ángulos de venta
-- Segmentación tipo Meta Ads
-- Creativos
-- Landing / WhatsApp / funnel
-- Seguimiento
-- Métricas
-- Optimización
-
-Reglas críticas:
+IMPORTANTE:
+- La IA NO debe inventar métricas financieras finales.
+- No prometas resultados garantizados.
+- Las métricas finales serán calculadas por el backend.
+- Enfócate en estrategia, segmentación, creativos, funnel, mensajes y optimización.
 - Responde SOLO JSON válido.
 - No uses markdown.
 - No uses texto fuera del JSON.
-- No prometas resultados garantizados.
-- Usa español profesional.
-- Las métricas deben ser estimadas y prudentes.
-- La campaña debe ser accionable y lista para que un usuario la implemente.
-- El objetivo central es generar leads, conversaciones y ventas.`
+- Usa español profesional y accionable.`
 
 	user := fmt.Sprintf(`Crea un plan PRO de campaña Ads IA para:
 
@@ -211,14 +232,6 @@ Devuelve únicamente JSON con esta estructura exacta:
   "creative_prompt": "",
   "landing_suggestion": "",
   "whatsapp_script": "",
-  "budget_daily": 0,
-  "budget_monthly": 0,
-  "estimated_reach": 0,
-  "estimated_leads": 0,
-  "estimated_cpl": 0,
-  "estimated_sales": 0,
-  "estimated_revenue": 0,
-  "estimated_roi": 0,
   "recommendations": [],
 
   "campaign_summary": "",
@@ -260,31 +273,14 @@ Devuelve únicamente JSON con esta estructura exacta:
     "tracking_events": []
   },
 
-  "roi": {
-    "currency": "%s",
-    "budget_daily": 0,
-    "budget_monthly": 0,
-    "estimated_cpm": 0,
-    "estimated_cpc": 0,
-    "estimated_ctr": 0,
-    "estimated_cpl": 0,
-    "estimated_reach": 0,
-    "estimated_clicks": 0,
-    "estimated_leads": 0,
-    "conversion_rate": 0,
-    "estimated_sales": 0,
-    "ticket_average": 0,
-    "estimated_revenue": 0,
-    "estimated_profit": 0,
-    "estimated_roi": 0,
-    "break_even_cpl": 0
-  },
-
   "optimization_plan": [],
   "launch_checklist": [],
   "testing_plan": [],
   "risk_warnings": [],
-  "next_actions": []
+  "next_actions": [],
+  "automation_rules": [],
+  "scale_rules": [],
+  "kill_rules": []
 }
 
 Condiciones:
@@ -293,7 +289,9 @@ Condiciones:
 - Genera mínimo 5 recomendaciones.
 - Genera mínimo 5 pasos de optimization_plan.
 - Genera mínimo 5 puntos de launch_checklist.
-- Genera mínimo 5 next_actions.
+- Genera mínimo 5 automation_rules.
+- Genera mínimo 3 scale_rules.
+- Genera mínimo 3 kill_rules.
 - La segmentación debe parecer realista para Meta Ads.
 - Los copies deben estar listos para anuncio.
 - El creative_prompt debe servir para generar imagen con IA.
@@ -307,14 +305,13 @@ Condiciones:
 		budgetDaily,
 		ticketAverage,
 		currency,
-		currency,
 	)
 
 	raw, err := s.AI.doHeavyCompletion(
 		ctx,
 		"",
-		0.45,
-		4200,
+		0.42,
+		4500,
 		[]map[string]string{
 			{"role": "system", "content": system},
 			{"role": "user", "content": user},
@@ -382,8 +379,6 @@ func normalizeCampaignPlan(
 		ticketAverage = 50
 	}
 
-	budgetMonthly := budgetDaily * 30
-
 	if strings.TrimSpace(plan.Name) == "" {
 		plan.Name = "Campaña IA - " + product
 	}
@@ -409,7 +404,7 @@ func normalizeCampaignPlan(
 		plan.AgeRange = "25-55"
 	}
 	if len(plan.Interests) == 0 {
-		plan.Interests = []string{"Compras online", "Emprendimiento", "Educación", "Familia", "Bienestar"}
+		plan.Interests = []string{"Compras online", "Educación", "Familia", "Bienestar", "Emprendimiento"}
 	}
 	if len(plan.PainPoints) == 0 {
 		plan.PainPoints = []string{
@@ -420,10 +415,10 @@ func normalizeCampaignPlan(
 	}
 	if len(plan.Angles) == 0 {
 		plan.Angles = []string{
-			"Solución rápida y simple",
-			"Beneficio emocional",
-			"Autoridad y confianza",
-			"Oferta limitada",
+			"Beneficio directo",
+			"Dolor + solución",
+			"Confianza",
+			"Oferta directa",
 		}
 	}
 	if strings.TrimSpace(plan.PrimaryText) == "" {
@@ -442,20 +437,19 @@ func normalizeCampaignPlan(
 		plan.CreativePrompt = "Imagen publicitaria profesional del producto en uso, estilo moderno, alta conversión, sin exceso de texto."
 	}
 	if strings.TrimSpace(plan.LandingSuggestion) == "" {
-		plan.LandingSuggestion = "Landing con hero claro, beneficio principal, prueba social, explicación simple, CTA a WhatsApp y formulario de lead."
+		plan.LandingSuggestion = "Landing con promesa clara, beneficios, prueba social, explicación simple, CTA a WhatsApp y formulario."
 	}
 	if strings.TrimSpace(plan.WhatsAppScript) == "" {
 		plan.WhatsAppScript = "Hola, gracias por escribirnos. Cuéntame qué estás buscando y te ayudo a elegir la mejor opción."
 	}
-	if plan.BudgetDaily <= 0 {
-		plan.BudgetDaily = budgetDaily
-	}
-	if plan.BudgetMonthly <= 0 {
-		plan.BudgetMonthly = budgetMonthly
-	}
 
 	plan = normalizeROI(plan, budgetDaily, ticketAverage, currency)
+	plan = normalizeStrategicBlocks(plan, product, offer, target, country)
 
+	return plan
+}
+
+func normalizeStrategicBlocks(plan AdsCampaignPlan, product, offer, target, country string) AdsCampaignPlan {
 	if len(plan.Recommendations) == 0 {
 		plan.Recommendations = []string{
 			"Probar mínimo 4 creativos durante los primeros 7 días.",
@@ -487,7 +481,7 @@ func normalizeCampaignPlan(
 				AgeRange:   plan.AgeRange,
 				Gender:     "all",
 				Interests:  plan.Interests,
-				Behaviors:  []string{"Compradores que interactúan", "Usuarios activos en redes sociales"},
+				Behaviors:  []string{"Engaged shoppers", "Usuarios activos en redes sociales"},
 				Exclusions: []string{},
 				Message:    "Audiencia base alineada con el producto y oferta.",
 			},
@@ -601,7 +595,7 @@ func normalizeCampaignPlan(
 
 	if len(plan.OptimizationPlan) == 0 {
 		plan.OptimizationPlan = []string{
-			"Revisar CPL después de las primeras 48 horas.",
+			"Revisar CPL, CTR y tasa de conversación después de 48 horas.",
 			"Pausar creativos con CTR bajo y CPL alto.",
 			"Duplicar el mejor creativo con nueva variación visual.",
 			"Separar presupuesto hacia el adset con mayor tasa de conversación.",
@@ -623,7 +617,7 @@ func normalizeCampaignPlan(
 			"Test B: dolor principal.",
 			"Test C: prueba social.",
 			"Test D: oferta directa.",
-			"Comparar por CPL, CTR y tasa de respuesta en WhatsApp.",
+			"Comparar por CPL, CTR, CPC y tasa de respuesta en WhatsApp.",
 		}
 	}
 	if len(plan.RiskWarnings) == 0 {
@@ -642,124 +636,204 @@ func normalizeCampaignPlan(
 			"Medir resultados y optimizar.",
 		}
 	}
+	if len(plan.AutomationRules) == 0 {
+		plan.AutomationRules = []string{
+			"Si CTR < 0.8% después de 1,500 impresiones, crear nuevo hook y nuevo creativo.",
+			"Si CPL supera el break-even CPL, pausar adset y ajustar oferta.",
+			"Si WhatsApp responde en más de 5 minutos, priorizar automatización del bot.",
+			"Si un creativo genera 2x más leads que los demás, duplicarlo con nuevo ángulo.",
+			"Si hay clics sin leads, revisar landing, enlace o fricción del formulario.",
+		}
+	}
+	if len(plan.ScaleRules) == 0 {
+		plan.ScaleRules = []string{
+			"Escalar 20% cada 48 horas si CPL se mantiene bajo el objetivo.",
+			"Duplicar el adset ganador antes de aumentar presupuesto agresivamente.",
+			"Crear remarketing cuando existan suficientes clics o visitas.",
+		}
+	}
+	if len(plan.KillRules) == 0 {
+		plan.KillRules = []string{
+			"Pausar anuncio si CTR es bajo y no genera leads tras 48 horas.",
+			"Pausar adset si CPL supera el break-even CPL por dos días seguidos.",
+			"Pausar creativo si consume 1.5x el CPL objetivo sin resultados.",
+		}
+	}
 
 	return plan
 }
 
 func normalizeROI(plan AdsCampaignPlan, budgetDaily float64, ticketAverage float64, currency string) AdsCampaignPlan {
-	budgetMonthly := budgetDaily * 30
+	scenarios := buildROIScenarios(budgetDaily, ticketAverage, currency)
 
-	estimatedCPL := plan.EstimatedCPL
-	if estimatedCPL <= 0 {
-		estimatedCPL = estimateCPLByBudget(budgetDaily)
-	}
+	realistic := scenarios[1]
 
-	estimatedLeads := plan.EstimatedLeads
-	if estimatedLeads <= 0 {
-		estimatedLeads = int(math.Round(budgetMonthly / estimatedCPL))
-	}
-
-	cpm := plan.ROI.EstimatedCPM
-	if cpm <= 0 {
-		cpm = 4.5
-	}
-
-	ctr := plan.ROI.EstimatedCTR
-	if ctr <= 0 {
-		ctr = 1.2
-	}
-
-	estimatedReach := plan.EstimatedReach
-	if estimatedReach <= 0 {
-		estimatedReach = int(math.Round((budgetMonthly / cpm) * 1000))
-	}
-
-	clicks := plan.ROI.EstimatedClicks
-	if clicks <= 0 {
-		clicks = int(math.Round(float64(estimatedReach) * (ctr / 100)))
-	}
-
-	cpc := plan.ROI.EstimatedCPC
-	if cpc <= 0 && clicks > 0 {
-		cpc = budgetMonthly / float64(clicks)
-	}
-
-	conversionRate := plan.ROI.ConversionRate
-	if conversionRate <= 0 {
-		conversionRate = 0.04 + (budgetDaily / 1000)
-		if conversionRate > 0.12 {
-			conversionRate = 0.12
-		}
-	}
-
-	estimatedSales := plan.EstimatedSales
-	if estimatedSales <= 0 {
-		estimatedSales = int(math.Round(float64(estimatedLeads) * conversionRate))
-		if estimatedSales < 0 {
-			estimatedSales = 0
-		}
-	}
-
-	estimatedRevenue := plan.EstimatedRevenue
-	if estimatedRevenue <= 0 {
-		estimatedRevenue = float64(estimatedSales) * ticketAverage
-	}
-
-	profit := estimatedRevenue - budgetMonthly
-
-	roi := plan.EstimatedROI
-	if roi == 0 && budgetMonthly > 0 {
-		roi = (profit / budgetMonthly) * 100
-	}
-
-	breakEvenCPL := 0.0
-	if estimatedSales > 0 && estimatedLeads > 0 {
-		closeRate := float64(estimatedSales) / float64(estimatedLeads)
-		breakEvenCPL = ticketAverage * closeRate
-	}
-
-	plan.BudgetDaily = budgetDaily
-	plan.BudgetMonthly = budgetMonthly
-	plan.EstimatedCPL = round2(estimatedCPL)
-	plan.EstimatedLeads = estimatedLeads
-	plan.EstimatedReach = estimatedReach
-	plan.EstimatedSales = estimatedSales
-	plan.EstimatedRevenue = round2(estimatedRevenue)
-	plan.EstimatedROI = round2(roi)
+	plan.BudgetDaily = realistic.BudgetDaily
+	plan.BudgetMonthly = realistic.BudgetMonthly
+	plan.EstimatedCPL = realistic.EstimatedCPL
+	plan.EstimatedLeads = realistic.EstimatedLeads
+	plan.EstimatedReach = realistic.EstimatedReach
+	plan.EstimatedSales = realistic.EstimatedSales
+	plan.EstimatedRevenue = realistic.EstimatedRevenue
+	plan.EstimatedROI = realistic.EstimatedROI
 
 	plan.ROI = AdsROIProjection{
-		Currency:         currency,
-		BudgetDaily:      round2(budgetDaily),
-		BudgetMonthly:    round2(budgetMonthly),
-		EstimatedCPM:     round2(cpm),
-		EstimatedCPC:     round2(cpc),
-		EstimatedCTR:     round2(ctr),
-		EstimatedCPL:     round2(estimatedCPL),
-		EstimatedReach:   estimatedReach,
-		EstimatedClicks:  clicks,
-		EstimatedLeads:   estimatedLeads,
-		ConversionRate:   round4(conversionRate),
-		EstimatedSales:   estimatedSales,
-		TicketAverage:    round2(ticketAverage),
-		EstimatedRevenue: round2(estimatedRevenue),
-		EstimatedProfit:  round2(profit),
-		EstimatedROI:     round2(roi),
-		BreakEvenCPL:     round2(breakEvenCPL),
+		Currency:         realistic.Currency,
+		BudgetDaily:      realistic.BudgetDaily,
+		BudgetMonthly:    realistic.BudgetMonthly,
+		EstimatedCPM:     realistic.EstimatedCPM,
+		EstimatedCPC:     realistic.EstimatedCPC,
+		EstimatedCTR:     realistic.EstimatedCTR,
+		EstimatedCPL:     realistic.EstimatedCPL,
+		EstimatedReach:   realistic.EstimatedReach,
+		EstimatedClicks:  realistic.EstimatedClicks,
+		EstimatedLeads:   realistic.EstimatedLeads,
+		ConversionRate:   realistic.LeadCloseRate,
+		EstimatedSales:   realistic.EstimatedSales,
+		TicketAverage:    realistic.TicketAverage,
+		EstimatedRevenue: realistic.EstimatedRevenue,
+		EstimatedProfit:  realistic.EstimatedProfit,
+		EstimatedROI:     realistic.EstimatedROI,
+		BreakEvenCPL:     realistic.BreakEvenCPL,
 	}
+
+	plan.ROIScenarios = scenarios
 
 	return plan
 }
 
-func estimateCPLByBudget(budgetDaily float64) float64 {
-	switch {
-	case budgetDaily <= 5:
-		return 3.5
-	case budgetDaily <= 15:
-		return 2.8
-	case budgetDaily <= 50:
-		return 2.3
-	default:
-		return 2.0
+func buildROIScenarios(budgetDaily float64, ticketAverage float64, currency string) []AdsROIScenario {
+	if budgetDaily <= 0 {
+		budgetDaily = 10
+	}
+	if ticketAverage <= 0 {
+		ticketAverage = 50
+	}
+
+	budgetMonthly := budgetDaily * 30
+
+	return []AdsROIScenario{
+		calcROIScenario(
+			"Conservador",
+			currency,
+			budgetDaily,
+			budgetMonthly,
+			ticketAverage,
+			7.5,
+			0.75,
+			7.0,
+			2.5,
+			"Validar oferta y creativos antes de escalar. Si el CPL supera el break-even, ajustar copy, oferta o segmentación.",
+			"Probar sin escalar hasta tener mejores señales.",
+			"Escalar solo si el CPL baja por debajo del punto de equilibrio.",
+			"CTR bajo o CPL alto durante 48 horas.",
+		),
+		calcROIScenario(
+			"Realista",
+			currency,
+			budgetDaily,
+			budgetMonthly,
+			ticketAverage,
+			5.5,
+			1.25,
+			10.0,
+			5.0,
+			"Escenario base para tomar decisiones iniciales. Medir 5 a 7 días antes de escalar presupuesto.",
+			"Lanzar prueba controlada con 3 adsets y 4 creativos.",
+			"Escalar 15% a 20% si el CPL se mantiene estable.",
+			"CPL superior al break-even CPL o baja respuesta en WhatsApp.",
+		),
+		calcROIScenario(
+			"Agresivo",
+			currency,
+			budgetDaily,
+			budgetMonthly,
+			ticketAverage,
+			4.0,
+			2.0,
+			16.0,
+			8.0,
+			"Solo escalar a este escenario si hay buen CTR, buen CPL, respuesta rápida y cierre comercial comprobado.",
+			"Escalar creativos ganadores y activar remarketing.",
+			"Duplicar adset ganador y aumentar presupuesto gradualmente.",
+			"Caída de CTR, aumento de CPL o caída de tasa de cierre.",
+		),
+	}
+}
+
+func calcROIScenario(
+	name string,
+	currency string,
+	budgetDaily float64,
+	budgetMonthly float64,
+	ticketAverage float64,
+	cpm float64,
+	ctrPercent float64,
+	landingConvPercent float64,
+	closeRatePercent float64,
+	recommendation string,
+	decision string,
+	scaleSignal string,
+	optimizationTrigger string,
+) AdsROIScenario {
+	reach := 0
+	if cpm > 0 {
+		reach = int(math.Round((budgetMonthly / cpm) * 1000))
+	}
+
+	clicks := int(math.Round(float64(reach) * (ctrPercent / 100)))
+
+	cpc := 0.0
+	if clicks > 0 {
+		cpc = budgetMonthly / float64(clicks)
+	}
+
+	leads := int(math.Round(float64(clicks) * (landingConvPercent / 100)))
+
+	cpl := 0.0
+	if leads > 0 {
+		cpl = budgetMonthly / float64(leads)
+	}
+
+	sales := int(math.Round(float64(leads) * (closeRatePercent / 100)))
+
+	revenue := float64(sales) * ticketAverage
+	profit := revenue - budgetMonthly
+
+	roi := 0.0
+	if budgetMonthly > 0 {
+		roi = (profit / budgetMonthly) * 100
+	}
+
+	breakEvenCPL := 0.0
+	if closeRatePercent > 0 {
+		breakEvenCPL = ticketAverage * (closeRatePercent / 100)
+	}
+
+	return AdsROIScenario{
+		Name:                name,
+		Currency:            currency,
+		BudgetDaily:         round2(budgetDaily),
+		BudgetMonthly:       round2(budgetMonthly),
+		EstimatedCPM:        round2(cpm),
+		EstimatedCTR:        round2(ctrPercent),
+		EstimatedCPC:        round2(cpc),
+		LandingConvRate:     round2(landingConvPercent),
+		LeadCloseRate:       round2(closeRatePercent),
+		EstimatedReach:      reach,
+		EstimatedClicks:     clicks,
+		EstimatedLeads:      leads,
+		EstimatedCPL:        round2(cpl),
+		EstimatedSales:      sales,
+		TicketAverage:       round2(ticketAverage),
+		EstimatedRevenue:    round2(revenue),
+		EstimatedProfit:     round2(profit),
+		EstimatedROI:        round2(roi),
+		BreakEvenCPL:        round2(breakEvenCPL),
+		Recommendation:      recommendation,
+		Decision:            decision,
+		ScaleSignal:         scaleSignal,
+		OptimizationTrigger: optimizationTrigger,
 	}
 }
 
@@ -775,10 +849,6 @@ func firstOr(items []string, fallback string) string {
 
 func round2(v float64) float64 {
 	return math.Round(v*100) / 100
-}
-
-func round4(v float64) float64 {
-	return math.Round(v*10000) / 10000
 }
 
 func (s *AdsService) SaveCampaign(clientID string, plan AdsCampaignPlan, rawJSON string) (string, error) {
