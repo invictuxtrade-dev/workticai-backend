@@ -21,8 +21,8 @@ type AIService struct {
 
 func NewAIService(apiKey, model string) *AIService {
 	return &AIService{
-		APIKey:       apiKey,
-		DefaultModel: model,
+		APIKey:       strings.TrimSpace(apiKey),
+		DefaultModel: strings.TrimSpace(model),
 		HTTP:         &http.Client{Timeout: 10 * time.Second}, // rápido para chat/WhatsApp
 	}
 }
@@ -56,8 +56,9 @@ func (a *AIService) resolveModel(model string) string {
 	return model
 }
 
-func (a *AIService) doChatCompletion(
+func (a *AIService) requestChatCompletion(
 	ctx context.Context,
+	client *http.Client,
 	model string,
 	temperature float64,
 	maxTokens int,
@@ -65,6 +66,10 @@ func (a *AIService) doChatCompletion(
 ) (string, error) {
 	if strings.TrimSpace(a.APIKey) == "" {
 		return "", fmt.Errorf("OPENAI_API_KEY no configurada")
+	}
+
+	if client == nil {
+		client = a.HTTP
 	}
 
 	if temperature <= 0 {
@@ -78,18 +83,25 @@ func (a *AIService) doChatCompletion(
 		MaxTokens:   maxTokens,
 	}
 
-	body, _ := json.Marshal(payload)
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
 
-	req, _ := http.NewRequestWithContext(
+	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
 		"https://api.openai.com/v1/chat/completions",
 		bytes.NewBuffer(body),
 	)
+	if err != nil {
+		return "", err
+	}
+
 	req.Header.Set("Authorization", "Bearer "+a.APIKey)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := a.HTTP.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -103,7 +115,7 @@ func (a *AIService) doChatCompletion(
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		if parsed.Error != nil {
+		if parsed.Error != nil && strings.TrimSpace(parsed.Error.Message) != "" {
 			return "", fmt.Errorf("%s", parsed.Error.Message)
 		}
 		return "", fmt.Errorf("%s", string(b))
@@ -121,10 +133,52 @@ func (a *AIService) doChatCompletion(
 	return answer, nil
 }
 
+// Respuestas rápidas: WhatsApp, chat corto, mensajes comerciales.
+func (a *AIService) doChatCompletion(
+	ctx context.Context,
+	model string,
+	temperature float64,
+	maxTokens int,
+	messages []map[string]string,
+) (string, error) {
+	return a.requestChatCompletion(
+		ctx,
+		a.HTTP,
+		model,
+		temperature,
+		maxTokens,
+		messages,
+	)
+}
+
+// Generaciones pesadas: Ads IA, estrategia, segmentación, ROI, campañas completas.
+func (a *AIService) doHeavyCompletion(
+	ctx context.Context,
+	model string,
+	temperature float64,
+	maxTokens int,
+	messages []map[string]string,
+) (string, error) {
+	heavyClient := &http.Client{
+		Timeout: 90 * time.Second,
+	}
+
+	return a.requestChatCompletion(
+		ctx,
+		heavyClient,
+		model,
+		temperature,
+		maxTokens,
+		messages,
+	)
+}
+
 func cleanCodeBlock(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.ReplaceAll(s, "```html", "")
 	s = strings.ReplaceAll(s, "```HTML", "")
+	s = strings.ReplaceAll(s, "```json", "")
+	s = strings.ReplaceAll(s, "```JSON", "")
 	s = strings.ReplaceAll(s, "```", "")
 	return strings.TrimSpace(s)
 }
@@ -220,57 +274,25 @@ func (a *AIService) GenerateHTML(
 
 	model = a.resolveModel(model)
 
-	// cliente separado solo para generación pesada de landing pages
-	client := &http.Client{
+	htmlClient := &http.Client{
 		Timeout: 60 * time.Second,
 	}
 
-	payload := oaReq{
-		Model: model,
-		Messages: []map[string]string{
+	answer, err := a.requestChatCompletion(
+		ctx,
+		htmlClient,
+		model,
+		0.7,
+		4000,
+		[]map[string]string{
 			{"role": "system", "content": systemPrompt},
 			{"role": "user", "content": "Devuelve únicamente HTML completo, válido y renderizable. No uses markdown ni explicaciones."},
 		},
-		Temperature: 0.7,
-		MaxTokens:   4000,
-	}
-
-	body, _ := json.Marshal(payload)
-
-	req, _ := http.NewRequestWithContext(
-		ctx,
-		http.MethodPost,
-		"https://api.openai.com/v1/chat/completions",
-		bytes.NewBuffer(body),
 	)
-	req.Header.Set("Authorization", "Bearer "+a.APIKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
 
-	b, _ := io.ReadAll(resp.Body)
-
-	var parsed oaResp
-	if err := json.Unmarshal(b, &parsed); err != nil {
-		return "", fmt.Errorf("openai parse: %w", err)
-	}
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		if parsed.Error != nil {
-			return "", fmt.Errorf("%s", parsed.Error.Message)
-		}
-		return "", fmt.Errorf("%s", string(b))
-	}
-
-	if len(parsed.Choices) == 0 {
-		return "", fmt.Errorf("empty choices")
-	}
-
-	answer := strings.TrimSpace(parsed.Choices[0].Message.Content)
 	answer = cleanCodeBlock(answer)
 
 	if answer == "" {

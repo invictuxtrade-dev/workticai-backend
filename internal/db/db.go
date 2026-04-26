@@ -293,6 +293,7 @@ func migrate(db *sql.DB) error {
 		created_at TIMESTAMP NOT NULL,
 		updated_at TIMESTAMP NOT NULL
 	);`,
+	
 
 		`CREATE TABLE IF NOT EXISTS social_campaigns (
 		id TEXT PRIMARY KEY,
@@ -360,6 +361,22 @@ func migrate(db *sql.DB) error {
 		message TEXT NOT NULL,
 		created_at TIMESTAMP NOT NULL
 	);`,
+
+		`CREATE TABLE IF NOT EXISTS ads_campaigns (
+		id TEXT PRIMARY KEY,
+		client_id TEXT NOT NULL,
+		name TEXT NOT NULL DEFAULT '',
+		objective TEXT NOT NULL DEFAULT 'leads',
+		product TEXT NOT NULL DEFAULT '',
+		offer TEXT NOT NULL DEFAULT '',
+		target_audience TEXT NOT NULL DEFAULT '',
+		budget_daily REAL NOT NULL DEFAULT 0,
+		budget_monthly REAL NOT NULL DEFAULT 0,
+		status TEXT NOT NULL DEFAULT 'draft',
+		ai_plan_json TEXT NOT NULL DEFAULT '',
+		created_at TIMESTAMP NOT NULL,
+		updated_at TIMESTAMP NOT NULL
+		);`,
 
 		`CREATE INDEX IF NOT EXISTS idx_social_jobs_status_run_at ON social_jobs(status, run_at);`,
 		`CREATE INDEX IF NOT EXISTS idx_social_logs_client_id ON social_logs(client_id);`,

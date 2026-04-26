@@ -112,6 +112,11 @@ func (s *Server) routes() {
 	secured.HandleFunc("/subscriptions/pay", s.handleSubmitTxHash).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/subscriptions/pending", requireRole("admin")(s.handlePendingSubscriptions)).Methods("GET", "OPTIONS")
 	secured.HandleFunc("/subscriptions/{id}/approve", requireRole("admin")(s.handleApproveSubscription)).Methods("POST", "OPTIONS")
+
+	secured.HandleFunc("/ads/campaigns", s.handleListAdsCampaigns).Methods("GET", "OPTIONS")
+	secured.HandleFunc("/ads/generate-campaign", s.handleGenerateAdsCampaign).Methods("POST", "OPTIONS")
+	secured.HandleFunc("/ads/campaigns", s.handleCreateAdsCampaign).Methods("POST", "OPTIONS")
+	secured.HandleFunc("/ads/campaigns/{id}/status", s.handleUpdateAdsCampaignStatus).Methods("PATCH", "OPTIONS")
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
@@ -1587,4 +1592,250 @@ func (s *Server) handleApproveSubscription(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"success": true})
+}
+
+func (s *Server) handleGenerateAdsCampaign(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+
+	var body struct {
+		BusinessName  string  `json:"business_name"`
+		Product       string  `json:"product"`
+		Offer         string  `json:"offer"`
+		Target        string  `json:"target"`
+		Country       string  `json:"country"`
+		BudgetDaily   float64 `json:"budget_daily"`
+		TicketAverage float64 `json:"ticket_average"`
+		Save          bool    `json:"save"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+
+	body.BusinessName = strings.TrimSpace(body.BusinessName)
+	body.Product = strings.TrimSpace(body.Product)
+	body.Offer = strings.TrimSpace(body.Offer)
+	body.Target = strings.TrimSpace(body.Target)
+	body.Country = strings.TrimSpace(body.Country)
+
+	if body.Product == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "product required"})
+		return
+	}
+	if body.Offer == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "offer required"})
+		return
+	}
+	if body.Target == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "target required"})
+		return
+	}
+
+	clientID := u.ClientID
+	if u.Role == "admin" {
+		clientID = r.URL.Query().Get("client_id")
+	}
+
+	plan, err := s.Ads.GenerateCampaignPlan(
+		r.Context(),
+		body.BusinessName,
+		body.Product,
+		body.Offer,
+		body.Target,
+		body.Country,
+		body.BudgetDaily,
+		body.TicketAverage,
+	)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	var campaignID string
+	if body.Save {
+		b, _ := json.Marshal(plan)
+		campaignID, err = s.Ads.SaveCampaign(clientID, plan, string(b))
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"campaign_id": campaignID,
+		"plan":        plan,
+	})
+}
+
+func (s *Server) handleCreateAdsCampaign(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+
+	var body struct {
+		Plan models.AdsCampaignPlan `json:"plan"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+
+	clientID := u.ClientID
+	if u.Role == "admin" {
+		clientID = r.URL.Query().Get("client_id")
+	}
+
+	b, _ := json.Marshal(body.Plan)
+	id, err := s.Ads.SaveCampaign(clientID, services.AdsCampaignPlan{
+		Name:              body.Plan.Name,
+		Objective:         body.Plan.Objective,
+		Product:           body.Plan.Product,
+		Offer:             body.Plan.Offer,
+		TargetAudience:    body.Plan.TargetAudience,
+		Locations:         body.Plan.Locations,
+		AgeRange:          body.Plan.AgeRange,
+		Interests:         body.Plan.Interests,
+		PainPoints:        body.Plan.PainPoints,
+		Angles:            body.Plan.Angles,
+		PrimaryText:       body.Plan.PrimaryText,
+		Headline:          body.Plan.Headline,
+		Description:       body.Plan.Description,
+		CTA:               body.Plan.CTA,
+		CreativePrompt:    body.Plan.CreativePrompt,
+		LandingSuggestion: body.Plan.LandingSuggestion,
+		WhatsAppScript:    body.Plan.WhatsAppScript,
+		BudgetDaily:       body.Plan.BudgetDaily,
+		BudgetMonthly:     body.Plan.BudgetMonthly,
+		EstimatedReach:    body.Plan.EstimatedReach,
+		EstimatedLeads:    body.Plan.EstimatedLeads,
+		EstimatedCPL:      body.Plan.EstimatedCPL,
+		EstimatedSales:    body.Plan.EstimatedSales,
+		EstimatedRevenue:  body.Plan.EstimatedRevenue,
+		EstimatedROI:      body.Plan.EstimatedROI,
+		Recommendations:   body.Plan.Recommendations,
+	}, string(b))
+
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, map[string]any{"id": id})
+}
+
+func (s *Server) handleListAdsCampaigns(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	clientID := r.URL.Query().Get("client_id")
+	if u.Role != "admin" {
+		clientID = u.ClientID
+	}
+
+	rows, err := s.DB.Query(`
+		SELECT id, client_id, name, objective, product, offer, target_audience,
+		       budget_daily, budget_monthly, status, ai_plan_json, created_at, updated_at
+		FROM ads_campaigns
+		WHERE (?='' OR client_id=?)
+		ORDER BY created_at DESC
+	`, clientID, clientID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	out := []map[string]any{}
+
+	for rows.Next() {
+		var id, cid, name, objective, product, offer, targetAudience, status, aiPlanJSON string
+		var budgetDaily, budgetMonthly float64
+		var createdAt, updatedAt time.Time
+
+		if err := rows.Scan(
+			&id, &cid, &name, &objective, &product, &offer, &targetAudience,
+			&budgetDaily, &budgetMonthly, &status, &aiPlanJSON, &createdAt, &updatedAt,
+		); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+
+		var plan any
+		_ = json.Unmarshal([]byte(aiPlanJSON), &plan)
+
+		out = append(out, map[string]any{
+			"id":              id,
+			"client_id":       cid,
+			"name":            name,
+			"objective":       objective,
+			"product":         product,
+			"offer":           offer,
+			"target_audience": targetAudience,
+			"budget_daily":    budgetDaily,
+			"budget_monthly":  budgetMonthly,
+			"status":          status,
+			"plan":            plan,
+			"created_at":      createdAt,
+			"updated_at":      updatedAt,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) handleUpdateAdsCampaignStatus(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+
+	var body struct {
+		Status string `json:"status"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+
+	status := strings.TrimSpace(strings.ToLower(body.Status))
+	if status == "" {
+		status = "draft"
+	}
+
+	_, err := s.DB.Exec(`
+		UPDATE ads_campaigns
+		SET status=?, updated_at=?
+		WHERE id=?
+	`, status, time.Now(), id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"success": true})
+}
+
+type AdsCampaignPlan struct {
+	Name              string   `json:"name"`
+	Objective         string   `json:"objective"`
+	Product           string   `json:"product"`
+	Offer             string   `json:"offer"`
+	TargetAudience    string   `json:"target_audience"`
+	Locations         []string `json:"locations"`
+	AgeRange          string   `json:"age_range"`
+	Interests         []string `json:"interests"`
+	PainPoints        []string `json:"pain_points"`
+	Angles            []string `json:"angles"`
+	PrimaryText       string   `json:"primary_text"`
+	Headline          string   `json:"headline"`
+	Description        string   `json:"description"`
+	CTA               string   `json:"cta"`
+	CreativePrompt     string   `json:"creative_prompt"`
+	LandingSuggestion string   `json:"landing_suggestion"`
+	WhatsAppScript    string   `json:"whatsapp_script"`
+	BudgetDaily        float64  `json:"budget_daily"`
+	BudgetMonthly      float64  `json:"budget_monthly"`
+	EstimatedReach     int      `json:"estimated_reach"`
+	EstimatedLeads     int      `json:"estimated_leads"`
+	EstimatedCPL       float64  `json:"estimated_cpl"`
+	EstimatedSales     int      `json:"estimated_sales"`
+	EstimatedRevenue   float64  `json:"estimated_revenue"`
+	EstimatedROI       float64  `json:"estimated_roi"`
+	Recommendations    []string `json:"recommendations"`
 }
