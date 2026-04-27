@@ -12,6 +12,251 @@ import (
 	"github.com/google/uuid"
 )
 
+// ─────────────────────────────────────────────
+// PASO 1 — NUEVAS VARIABLES
+// ─────────────────────────────────────────────
+
+type CampaignMetrics struct {
+	Budget float64
+	Ticket float64
+
+	CPL float64
+	CTR float64
+	CPM float64
+
+	Leads   float64
+	Sales   float64
+	Revenue float64
+	Profit  float64
+	ROI     float64
+
+	ConversionRate      float64
+	BreakEvenConversion float64
+}
+
+// ─────────────────────────────────────────────
+// PASO 2 — BREAK EVEN
+// ─────────────────────────────────────────────
+
+func calculateBreakEven(metrics *CampaignMetrics) {
+	if metrics.Leads == 0 || metrics.Ticket == 0 {
+		return
+	}
+
+	// ventas necesarias para no perder dinero
+	breakEvenSales := metrics.Budget / metrics.Ticket
+
+	// conversión necesaria (como decimal, ej: 0.05 = 5%)
+	metrics.BreakEvenConversion = breakEvenSales / metrics.Leads
+}
+
+// ─────────────────────────────────────────────
+// PASO 3 — DIAGNÓSTICO INTELIGENTE
+// ─────────────────────────────────────────────
+
+func diagnoseCampaign(m *CampaignMetrics) []string {
+	issues := []string{}
+
+	if m.ROI < 0 {
+		issues = append(issues, "ROI negativo")
+	}
+	if m.CTR < 1 {
+		issues = append(issues, "CTR bajo")
+	}
+	if m.CPL > m.Ticket*0.3 {
+		issues = append(issues, "CPL demasiado alto")
+	}
+	if m.ConversionRate < m.BreakEvenConversion {
+		issues = append(issues, "Conversión insuficiente para rentabilidad")
+	}
+
+	return issues
+}
+
+// ─────────────────────────────────────────────
+// PASO 4 — AUTO-OPTIMIZACIÓN
+// ─────────────────────────────────────────────
+
+func optimizeCampaign(m *CampaignMetrics) {
+	// mejorar CTR
+	if m.CTR < 1.2 {
+		m.CTR *= 1.3
+	}
+
+	// reducir CPL
+	if m.CPL > m.Ticket*0.3 {
+		m.CPL *= 0.7
+	}
+
+	// mejorar conversión
+	if m.ConversionRate < 0.05 {
+		m.ConversionRate *= 1.5
+	}
+
+	// recalcular
+	if m.CPL > 0 {
+		m.Leads = m.Budget / m.CPL
+	}
+	m.Sales = m.Leads * m.ConversionRate
+	m.Revenue = m.Sales * m.Ticket
+	m.Profit = m.Revenue - m.Budget
+	if m.Budget > 0 {
+		m.ROI = (m.Profit / m.Budget) * 100
+	}
+}
+
+// ─────────────────────────────────────────────
+// PASO 5 — LOOP INTELIGENTE
+// ─────────────────────────────────────────────
+
+func autoImproveCampaign(m *CampaignMetrics) {
+	for i := 0; i < 5; i++ {
+		calculateBreakEven(m)
+
+		if m.ROI > 0 {
+			break
+		}
+
+		optimizeCampaign(m)
+	}
+}
+
+// ─────────────────────────────────────────────
+// PASO 6 — SCORE PROFESIONAL
+// ─────────────────────────────────────────────
+
+func calculateScore(m *CampaignMetrics) int {
+	score := 100
+
+	if m.ROI < 0 {
+		score -= 40
+	}
+	if m.CTR < 1 {
+		score -= 20
+	}
+	if m.CPL > m.Ticket*0.3 {
+		score -= 20
+	}
+	if m.ConversionRate < m.BreakEvenConversion {
+		score -= 20
+	}
+
+	if score < 0 {
+		score = 0
+	}
+
+	return score
+}
+
+// ─────────────────────────────────────────────
+// PASO 7 — DECISIÓN AUTOMÁTICA
+// ─────────────────────────────────────────────
+
+func generateDecision(m *CampaignMetrics, score int) string {
+	if m.ROI < 0 {
+		return "❌ No lanzar campaña. Ajustar oferta, precio o conversión."
+	}
+	if score < 60 {
+		return "⚠️ Campaña débil. Requiere optimización antes de escalar."
+	}
+	if score < 80 {
+		return "🟡 Campaña viable. Probar con bajo presupuesto."
+	}
+	return "🟢 Escalar campaña. Buen potencial de rentabilidad."
+}
+
+// ─────────────────────────────────────────────
+// PASO 8 — HELPER: inicializar y correr métricas
+// ─────────────────────────────────────────────
+
+// CampaignEvaluation separa el diagnóstico REAL de la proyección optimizada.
+// ScoreReal / DecisionReal reflejan los números tal como vienen del ROI.
+// OptimizedProjection muestra cómo quedarían las métricas si se aplican
+// las optimizaciones sugeridas (no reemplaza la realidad, solo la proyecta).
+type CampaignEvaluation struct {
+	// Diagnóstico sobre métricas reales (sin tocar)
+	RealMetrics  *CampaignMetrics
+	ScoreReal    int
+	DecisionReal string
+	IssuesReal   []string
+
+	// Proyección si se optimiza la campaña
+	OptimizedProjection *CampaignMetrics
+	ScoreOptimized      int
+	DecisionOptimized   string
+}
+
+func evaluateCampaign(budget, ticket, cpl, ctr, cpm, conversionRate float64) CampaignEvaluation {
+	if conversionRate <= 0 {
+		conversionRate = 5
+	}
+
+	// LeadCloseRate viene como porcentaje (ej: 5.0 = 5%).
+	// Convertir a decimal para los cálculos internos.
+	if conversionRate > 1 {
+		conversionRate = conversionRate / 100
+	}
+
+	// ── métricas REALES (snapshot fiel del ROI calculado) ──
+	real := &CampaignMetrics{
+		Budget:         budget,
+		Ticket:         ticket,
+		CPL:            cpl,
+		CTR:            ctr,
+		CPM:            cpm,
+		ConversionRate: conversionRate,
+	}
+
+	if real.CPL > 0 {
+		real.Leads = real.Budget / real.CPL
+	}
+	real.Sales = real.Leads * real.ConversionRate
+	real.Revenue = real.Sales * real.Ticket
+	real.Profit = real.Revenue - real.Budget
+	if real.Budget > 0 {
+		real.ROI = (real.Profit / real.Budget) * 100
+	}
+	calculateBreakEven(real)
+
+	issuesReal := diagnoseCampaign(real)
+	scoreReal := calculateScore(real)
+	decisionReal := generateDecision(real, scoreReal)
+
+	// ── proyección OPTIMIZADA (copia independiente, no modifica real) ──
+	opt := &CampaignMetrics{
+		Budget:         real.Budget,
+		Ticket:         real.Ticket,
+		CPL:            real.CPL,
+		CTR:            real.CTR,
+		CPM:            real.CPM,
+		ConversionRate: real.ConversionRate,
+		Leads:          real.Leads,
+		Sales:          real.Sales,
+		Revenue:        real.Revenue,
+		Profit:         real.Profit,
+		ROI:            real.ROI,
+	}
+	autoImproveCampaign(opt)
+	calculateBreakEven(opt)
+
+	scoreOpt := calculateScore(opt)
+	decisionOpt := generateDecision(opt, scoreOpt)
+
+	return CampaignEvaluation{
+		RealMetrics:         real,
+		ScoreReal:           scoreReal,
+		DecisionReal:        decisionReal,
+		IssuesReal:          issuesReal,
+		OptimizedProjection: opt,
+		ScoreOptimized:      scoreOpt,
+		DecisionOptimized:   decisionOpt,
+	}
+}
+
+// ─────────────────────────────────────────────
+// STRUCTS ORIGINALES
+// ─────────────────────────────────────────────
+
 type AdsService struct {
 	DB *sql.DB
 	AI *AIService
@@ -64,7 +309,7 @@ type AdsROIProjection struct {
 	EstimatedLeads   int     `json:"estimated_leads"`
 	ConversionRate   float64 `json:"conversion_rate"`
 	EstimatedSales   int     `json:"estimated_sales"`
-	TicketAverage     float64 `json:"ticket_average"`
+	TicketAverage    float64 `json:"ticket_average"`
 	EstimatedRevenue float64 `json:"estimated_revenue"`
 	EstimatedProfit  float64 `json:"estimated_profit"`
 	EstimatedROI     float64 `json:"estimated_roi"`
@@ -86,7 +331,7 @@ type AdsROIScenario struct {
 	EstimatedLeads      int     `json:"estimated_leads"`
 	EstimatedCPL        float64 `json:"estimated_cpl"`
 	EstimatedSales      int     `json:"estimated_sales"`
-	TicketAverage        float64 `json:"ticket_average"`
+	TicketAverage       float64 `json:"ticket_average"`
 	EstimatedRevenue    float64 `json:"estimated_revenue"`
 	EstimatedProfit     float64 `json:"estimated_profit"`
 	EstimatedROI        float64 `json:"estimated_roi"`
@@ -98,24 +343,25 @@ type AdsROIScenario struct {
 }
 
 type AdsCampaignPlan struct {
-	Name              string   `json:"name"`
-	Objective         string   `json:"objective"`
-	Currency          string   `json:"currency"`
-	Product           string   `json:"product"`
-	Offer             string   `json:"offer"`
-	TargetAudience    string   `json:"target_audience"`
-	Locations         []string `json:"locations"`
-	AgeRange          string   `json:"age_range"`
-	Interests         []string `json:"interests"`
-	PainPoints        []string `json:"pain_points"`
-	Angles            []string `json:"angles"`
-	PrimaryText       string   `json:"primary_text"`
-	Headline          string   `json:"headline"`
-	Description        string   `json:"description"`
-	CTA               string   `json:"cta"`
-	CreativePrompt     string   `json:"creative_prompt"`
-	LandingSuggestion string   `json:"landing_suggestion"`
-	WhatsAppScript    string   `json:"whatsapp_script"`
+	Name           string   `json:"name"`
+	Objective      string   `json:"objective"`
+	Currency       string   `json:"currency"`
+	Product        string   `json:"product"`
+	Offer          string   `json:"offer"`
+	TargetAudience string   `json:"target_audience"`
+	Locations      []string `json:"locations"`
+	AgeRange       string   `json:"age_range"`
+	Interests      []string `json:"interests"`
+	PainPoints     []string `json:"pain_points"`
+	Angles         []string `json:"angles"`
+	PrimaryText    string   `json:"primary_text"`
+	Headline       string   `json:"headline"`
+	Description    string   `json:"description"`
+	CTA            string   `json:"cta"`
+	CreativePrompt string   `json:"creative_prompt"`
+
+	LandingSuggestion string `json:"landing_suggestion"`
+	WhatsAppScript    string `json:"whatsapp_script"`
 
 	BudgetDaily      float64 `json:"budget_daily"`
 	BudgetMonthly    float64 `json:"budget_monthly"`
@@ -147,7 +393,22 @@ type AdsCampaignPlan struct {
 	AutomationRules []string `json:"automation_rules"`
 	ScaleRules      []string `json:"scale_rules"`
 	KillRules       []string `json:"kill_rules"`
+
+	// ── Campos nuevos del sistema de evaluación ──
+
+	// Diagnóstico sobre las métricas reales del escenario base
+	CampaignScoreReal    int      `json:"campaign_score_real"`
+	CampaignDecisionReal string   `json:"campaign_decision_real"`
+	CampaignIssues       []string `json:"campaign_issues"`
+
+	// Proyección si se aplican las optimizaciones sugeridas
+	CampaignScoreOptimized    int    `json:"campaign_score_optimized"`
+	CampaignDecisionOptimized string `json:"campaign_decision_optimized"`
 }
+
+// ─────────────────────────────────────────────
+// GENERATE CAMPAIGN PLAN
+// ─────────────────────────────────────────────
 
 func (s *AdsService) GenerateCampaignPlan(
 	ctx context.Context,
@@ -324,24 +585,46 @@ Condiciones:
 	raw = cleanAIJSON(raw)
 
 	var plan AdsCampaignPlan
-if err := json.Unmarshal([]byte(raw), &plan); err != nil {
-	fixed, repairErr := s.repairAIJSON(ctx, raw)
-	if repairErr != nil {
-		return AdsCampaignPlan{}, fmt.Errorf("respuesta IA inválida")
+	if err := json.Unmarshal([]byte(raw), &plan); err != nil {
+		fixed, repairErr := s.repairAIJSON(ctx, raw)
+		if repairErr != nil {
+			return AdsCampaignPlan{}, fmt.Errorf("respuesta IA inválida")
+		}
+
+		fixed = cleanAIJSON(fixed)
+
+		if err2 := json.Unmarshal([]byte(fixed), &plan); err2 != nil {
+			return AdsCampaignPlan{}, fmt.Errorf("respuesta IA inválida")
+		}
 	}
-
-	fixed = cleanAIJSON(fixed)
-
-	if err2 := json.Unmarshal([]byte(fixed), &plan); err2 != nil {
-		return AdsCampaignPlan{}, fmt.Errorf("respuesta IA inválida")
-	}
-}
-
 
 	plan = normalizeCampaignPlan(plan, product, offer, target, country, currency, budgetDaily, ticketAverage)
 
+	// ── PASO 8: evaluar con el sistema de métricas ──
+	eval := evaluateCampaign(
+		plan.BudgetMonthly,
+		ticketAverage,
+		plan.ROI.EstimatedCPL,
+		plan.ROI.EstimatedCTR,
+		plan.ROI.EstimatedCPM,
+		plan.ROI.ConversionRate, // viene como porcentaje (ej: 5.0), evaluateCampaign lo convierte
+	)
+
+	// diagnóstico real
+	plan.CampaignScoreReal = eval.ScoreReal
+	plan.CampaignDecisionReal = eval.DecisionReal
+	plan.CampaignIssues = eval.IssuesReal
+
+	// proyección optimizada
+	plan.CampaignScoreOptimized = eval.ScoreOptimized
+	plan.CampaignDecisionOptimized = eval.DecisionOptimized
+
 	return plan, nil
 }
+
+// ─────────────────────────────────────────────
+// REPAIR AI JSON
+// ─────────────────────────────────────────────
 
 func (s *AdsService) repairAIJSON(ctx context.Context, broken string) (string, error) {
 	system := `Eres un reparador experto de JSON.
@@ -366,6 +649,10 @@ Solo corrige comillas, comas, escapes y estructura.`
 		},
 	)
 }
+
+// ─────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────
 
 func cleanAIJSON(s string) string {
 	s = strings.TrimSpace(s)
@@ -697,6 +984,10 @@ func normalizeStrategicBlocks(plan AdsCampaignPlan, product, offer, target, coun
 	return plan
 }
 
+// ─────────────────────────────────────────────
+// ROI
+// ─────────────────────────────────────────────
+
 func normalizeROI(plan AdsCampaignPlan, budgetDaily float64, ticketAverage float64, currency string) AdsCampaignPlan {
 	scenarios := buildROIScenarios(budgetDaily, ticketAverage, currency)
 
@@ -871,6 +1162,10 @@ func calcROIScenario(
 	}
 }
 
+// ─────────────────────────────────────────────
+// MISC HELPERS
+// ─────────────────────────────────────────────
+
 func firstOr(items []string, fallback string) string {
 	for _, item := range items {
 		item = strings.TrimSpace(item)
@@ -884,6 +1179,10 @@ func firstOr(items []string, fallback string) string {
 func round2(v float64) float64 {
 	return math.Round(v*100) / 100
 }
+
+// ─────────────────────────────────────────────
+// SAVE CAMPAIGN
+// ─────────────────────────────────────────────
 
 func (s *AdsService) SaveCampaign(clientID string, plan AdsCampaignPlan, rawJSON string) (string, error) {
 	clientID = strings.TrimSpace(clientID)
