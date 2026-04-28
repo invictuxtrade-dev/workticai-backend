@@ -46,7 +46,6 @@ type IndustryBenchmark struct {
 }
 
 // industryBenchmarks: mapa de industrias con benchmarks reales.
-// Keywords: al detectar el producto/nicho se busca la clave más cercana.
 var industryBenchmarks = map[string]IndustryBenchmark{
 	"wellness": {
 		MinCTR: 1.2, AvgCTR: 2.4, MaxCTR: 4.0,
@@ -141,8 +140,7 @@ var industryBenchmarks = map[string]IndustryBenchmark{
 	},
 }
 
-// industryKeywords mapea palabras clave detectables en el producto/nicho
-// hacia la clave del benchmark correspondiente.
+// industryKeywords mapea palabras clave detectables hacia el benchmark correcto.
 var industryKeywords = map[string][]string{
 	"wellness":                {"bienestar", "meditación", "mindfulness", "yoga", "meditacion", "wellness", "spa", "relajación", "relajacion", "estrés", "estres", "mental"},
 	"salud":                   {"salud", "médico", "medico", "clínica", "clinica", "hospital", "nutrición", "nutricion", "dieta", "suplemento", "vitamina", "fisioterapia", "odontología", "odontologia", "dental", "farmacia", "psicología", "psicologia"},
@@ -158,8 +156,8 @@ var industryKeywords = map[string][]string{
 	"viajes":                  {"viaje", "turismo", "hotel", "vuelo", "paquete turístico", "paquete turistico", "tour", "excursión", "excursion", "crucero", "hospedaje", "alojamiento"},
 }
 
-// detectIndustry analiza el texto del producto y la oferta
-// para encontrar el benchmark más adecuado.
+// detectIndustry analiza el texto del producto, oferta y target
+// para encontrar el benchmark más adecuado por score de keywords.
 func detectIndustry(product, offer, target string) string {
 	text := strings.ToLower(product + " " + offer + " " + target)
 
@@ -168,13 +166,11 @@ func detectIndustry(product, offer, target string) string {
 
 	for industry, keywords := range industryKeywords {
 		score := 0
-
 		for _, kw := range keywords {
 			if strings.Contains(text, kw) {
 				score++
 			}
 		}
-
 		if score > bestScore {
 			bestScore = score
 			bestIndustry = industry
@@ -232,30 +228,25 @@ func calculateBreakEven(metrics *CampaignMetrics) {
 
 // ─────────────────────────────────────────────
 // DIAGNÓSTICO INTELIGENTE
-// Umbrales corregidos: menos agresivos, más realistas.
 // ─────────────────────────────────────────────
 
 func diagnoseCampaign(m *CampaignMetrics) []string {
 	issues := []string{}
 
-	// Solo marcar ROI negativo si es menor a -20% (no a cualquier negativo)
 	if m.ROI < -20 {
 		issues = append(issues, "ROI muy negativo (peor de -20%)")
 	} else if m.ROI < 0 {
 		issues = append(issues, "ROI negativo leve — requiere ajuste")
 	}
 
-	// CTR bajo si es menor a 0.5% (antes era 1%, demasiado agresivo)
 	if m.CTR < 0.5 {
 		issues = append(issues, "CTR bajo (< 0.5%) — revisar creativos y copy")
 	}
 
-	// CPL alto si supera el 60% del ticket (antes era 30%, imposible para WhatsApp)
 	if m.CPL > m.Ticket*0.6 {
 		issues = append(issues, "CPL demasiado alto respecto al ticket promedio")
 	}
 
-	// Conversión insuficiente para rentabilidad
 	if m.BreakEvenConversion > 0 && m.ConversionRate < m.BreakEvenConversion {
 		issues = append(issues, "Tasa de conversión por debajo del punto de equilibrio")
 	}
@@ -305,7 +296,6 @@ func autoImproveCampaign(m *CampaignMetrics) {
 
 // ─────────────────────────────────────────────
 // SCORE PROFESIONAL
-// Scoring más justo: no destruye todo por un ROI ligeramente negativo.
 // ─────────────────────────────────────────────
 
 func calculateScore(m *CampaignMetrics) int {
@@ -327,7 +317,7 @@ func calculateScore(m *CampaignMetrics) int {
 		score -= 8
 	}
 
-	// CPL — umbral más generoso: 60% del ticket
+	// CPL — umbral generoso: 60% del ticket
 	if m.CPL > m.Ticket*0.6 {
 		score -= 20
 	} else if m.CPL > m.Ticket*0.4 {
@@ -342,6 +332,12 @@ func calculateScore(m *CampaignMetrics) int {
 	if score < 0 {
 		score = 0
 	}
+
+	// Nunca devolver score perfecto: máximo honesto es 94
+	if score > 94 {
+		score = 94
+	}
+
 	return score
 }
 
@@ -443,7 +439,7 @@ func evaluateCampaign(budget, ticket, cpl, ctr, cpm, conversionRate float64) Cam
 }
 
 // ─────────────────────────────────────────────
-// STRUCTS ORIGINALES
+// STRUCTS
 // ─────────────────────────────────────────────
 
 type AdsService struct {
@@ -503,9 +499,15 @@ type AdsROIProjection struct {
 	EstimatedProfit  float64 `json:"estimated_profit"`
 	EstimatedROI     float64 `json:"estimated_roi"`
 	BreakEvenCPL     float64 `json:"break_even_cpl"`
+	Industry         string  `json:"industry"`
 
-	// Nuevo: industria detectada para contexto
-	Industry string `json:"industry"`
+	// Reality Engine
+	RawROI          float64  `json:"raw_roi"`
+	AdjustedROI     float64  `json:"adjusted_roi"`
+	ConfidenceScore float64  `json:"confidence_score"`
+	ConfidenceLevel string   `json:"confidence_level"`
+	RiskLevel       string   `json:"risk_level"`
+	RealityWarnings []string `json:"reality_warnings"`
 }
 
 type AdsROIScenario struct {
@@ -532,9 +534,15 @@ type AdsROIScenario struct {
 	Decision            string  `json:"decision"`
 	ScaleSignal         string  `json:"scale_signal"`
 	OptimizationTrigger string  `json:"optimization_trigger"`
+	Industry            string  `json:"industry"`
 
-	// Nuevo: industria asociada
-	Industry string `json:"industry"`
+	// Reality Engine
+	RawROI          float64  `json:"raw_roi"`
+	AdjustedROI     float64  `json:"adjusted_roi"`
+	ConfidenceScore float64  `json:"confidence_score"`
+	ConfidenceLevel string   `json:"confidence_level"`
+	RiskLevel       string   `json:"risk_level"`
+	RealityWarnings []string `json:"reality_warnings"`
 }
 
 type AdsCampaignPlan struct {
@@ -589,15 +597,12 @@ type AdsCampaignPlan struct {
 	ScaleRules      []string `json:"scale_rules"`
 	KillRules       []string `json:"kill_rules"`
 
-	// Industria detectada para contexto y benchmarks
 	Industry string `json:"industry"`
 
-	// Diagnóstico sobre métricas reales
 	CampaignScoreReal    int      `json:"campaign_score_real"`
 	CampaignDecisionReal string   `json:"campaign_decision_real"`
 	CampaignIssues       []string `json:"campaign_issues"`
 
-	// Proyección si se aplican optimizaciones
 	CampaignScoreOptimized    int    `json:"campaign_score_optimized"`
 	CampaignDecisionOptimized string `json:"campaign_decision_optimized"`
 }
@@ -792,7 +797,7 @@ Condiciones:
 		}
 	}
 
-	// Detectar industria ANTES de normalizar para que los benchmarks sean correctos
+	// Detectar industria ANTES de normalizar
 	industry := detectIndustry(product, offer, target)
 	plan.Industry = industry
 
@@ -960,7 +965,6 @@ func normalizeCampaignPlan(
 		plan.WhatsAppScript = "Hola, gracias por escribirnos. Cuéntame qué estás buscando y te ayudo a elegir la mejor opción."
 	}
 
-	// Pasar la industria para normalizar ROI con benchmarks correctos
 	plan = normalizeROI(plan, budgetDaily, ticketAverage, currency, industry)
 	plan = normalizeStrategicBlocks(plan, product, offer, target, country)
 
@@ -1182,11 +1186,9 @@ func normalizeStrategicBlocks(plan AdsCampaignPlan, product, offer, target, coun
 }
 
 // ─────────────────────────────────────────────
-// ROI — AHORA CONTEXTUAL POR INDUSTRIA
+// ROI — CONTEXTUAL POR INDUSTRIA + REALITY ENGINE
 // ─────────────────────────────────────────────
 
-// normalizeROI usa el benchmark de la industria detectada para
-// generar escenarios realistas en lugar de valores estáticos.
 func normalizeROI(plan AdsCampaignPlan, budgetDaily float64, ticketAverage float64, currency string, industry string) AdsCampaignPlan {
 	scenarios := buildROIScenarios(budgetDaily, ticketAverage, currency, industry)
 
@@ -1220,6 +1222,13 @@ func normalizeROI(plan AdsCampaignPlan, budgetDaily float64, ticketAverage float
 		EstimatedROI:     realistic.EstimatedROI,
 		BreakEvenCPL:     realistic.BreakEvenCPL,
 		Industry:         industry,
+		// Reality Engine heredado del escenario realista
+		RawROI:          realistic.RawROI,
+		AdjustedROI:     realistic.AdjustedROI,
+		ConfidenceScore: realistic.ConfidenceScore,
+		ConfidenceLevel: realistic.ConfidenceLevel,
+		RiskLevel:       realistic.RiskLevel,
+		RealityWarnings: realistic.RealityWarnings,
 	}
 
 	plan.ROIScenarios = scenarios
@@ -1227,8 +1236,9 @@ func normalizeROI(plan AdsCampaignPlan, budgetDaily float64, ticketAverage float
 	return plan
 }
 
-// buildROIScenarios construye 3 escenarios usando los benchmarks reales
-// de la industria detectada: Conservador (Min), Realista (Avg), Agresivo (Max).
+// buildROIScenarios construye 3 escenarios usando benchmarks reales de la industria.
+// Conservador usa los peores valores (MaxCPM + Min tasas),
+// Realista usa promedios, Agresivo usa los mejores valores.
 func buildROIScenarios(budgetDaily float64, ticketAverage float64, currency string, industry string) []AdsROIScenario {
 	if budgetDaily <= 0 {
 		budgetDaily = 10
@@ -1247,10 +1257,10 @@ func buildROIScenarios(budgetDaily float64, ticketAverage float64, currency stri
 			budgetDaily,
 			budgetMonthly,
 			ticketAverage,
-			b.MaxCPM,            // CPM promedio de la industria
-			b.MinCTR,            // CTR mínimo de la industria
-			b.MinLandingConv,    // Landing conv mínima
-			b.MinCloseRate,      // Close rate mínimo
+			b.MaxCPM,         // CPM más caro → menos alcance → más conservador
+			b.MinCTR,
+			b.MinLandingConv,
+			b.MinCloseRate,
 			industry,
 			"Validar oferta y creativos antes de escalar. Si el CPL supera el break-even, ajustar copy, oferta o segmentación.",
 			"Probar sin escalar hasta tener mejores señales.",
@@ -1263,10 +1273,10 @@ func buildROIScenarios(budgetDaily float64, ticketAverage float64, currency stri
 			budgetDaily,
 			budgetMonthly,
 			ticketAverage,
-			b.AvgCPM,            // CPM promedio
-			b.AvgCTR,            // CTR promedio
-			b.AvgLandingConv,    // Landing conv promedio
-			b.AvgCloseRate,      // Close rate promedio
+			b.AvgCPM,
+			b.AvgCTR,
+			b.AvgLandingConv,
+			b.AvgCloseRate,
 			industry,
 			"Escenario base para tomar decisiones iniciales. Medir 5 a 7 días antes de escalar presupuesto.",
 			"Lanzar prueba controlada con 3 adsets y 4 creativos.",
@@ -1279,10 +1289,10 @@ func buildROIScenarios(budgetDaily float64, ticketAverage float64, currency stri
 			budgetDaily,
 			budgetMonthly,
 			ticketAverage,
-			b.MinCPM,            // CPM mínimo (mejor caso de eficiencia)
-			b.MaxCTR,            // CTR máximo
-			b.MaxLandingConv,    // Landing conv máxima
-			b.MaxCloseRate,      // Close rate máximo
+			b.MinCPM,         // CPM más barato → más alcance → más agresivo
+			b.MaxCTR,
+			b.MaxLandingConv,
+			b.MaxCloseRate,
 			industry,
 			"Solo escalar a este escenario si hay buen CTR, buen CPL, respuesta rápida y cierre comercial comprobado.",
 			"Escalar creativos ganadores y activar remarketing.",
@@ -1292,6 +1302,7 @@ func buildROIScenarios(budgetDaily float64, ticketAverage float64, currency stri
 	}
 }
 
+// calcROIScenario calcula un escenario completo incluyendo el Reality Engine.
 func calcROIScenario(
 	name string,
 	currency string,
@@ -1308,6 +1319,7 @@ func calcROIScenario(
 	scaleSignal string,
 	optimizationTrigger string,
 ) AdsROIScenario {
+	// ── Métricas base ────────────────────────────────────────────────────────
 	reach := 0
 	if cpm > 0 {
 		reach = int(math.Round((budgetMonthly / cpm) * 1000))
@@ -1328,9 +1340,7 @@ func calcROIScenario(
 	}
 
 	salesFloat := float64(leads) * (closeRatePercent / 100)
-
 	sales := int(math.Floor(salesFloat))
-
 	if sales == 0 && leads > 3 {
 		sales = 1
 	}
@@ -1343,14 +1353,79 @@ func calcROIScenario(
 		roi = (profit / budgetMonthly) * 100
 	}
 
-	if roi > 500 {
-    roi = 500
+	// Techo de ROI bruto antes del ajuste por reality factor
+	if roi > 250 {
+		roi = 250
 	}
 
 	breakEvenCPL := 0.0
 	if closeRatePercent > 0 {
 		breakEvenCPL = ticketAverage * (closeRatePercent / 100)
 	}
+
+	// ── REALITY ENGINE ───────────────────────────────────────────────────────
+	rawROI := roi
+	confidenceScore := 100.0
+	warnings := []string{}
+
+	if ctrPercent > 3.5 {
+		confidenceScore -= 10
+		warnings = append(warnings, "CTR alto: validar con datos reales antes de escalar.")
+	}
+
+	if landingConvPercent > 25 {
+		confidenceScore -= 12
+		warnings = append(warnings, "Conversión landing alta: puede requerir una landing muy optimizada.")
+	}
+
+	if closeRatePercent > 15 {
+		confidenceScore -= 15
+		warnings = append(warnings, "Tasa de cierre alta: depende mucho del seguimiento comercial.")
+	}
+
+	if cpl > 0 && cpl < 0.75 {
+		confidenceScore -= 15
+		warnings = append(warnings, "CPL muy bajo: posible escenario optimista para tráfico frío.")
+	}
+
+	if rawROI > 150 {
+		confidenceScore -= 20
+		warnings = append(warnings, "ROI elevado: tratar como proyección agresiva, no como garantía.")
+	}
+
+	if budgetMonthly < 150 {
+		confidenceScore -= 10
+		warnings = append(warnings, "Presupuesto bajo: los datos pueden ser poco estables.")
+	}
+
+	if confidenceScore < 25 {
+		confidenceScore = 25
+	}
+
+	realityFactor := confidenceScore / 100
+	adjustedROI := rawROI * realityFactor
+
+	adjustedProfit := budgetMonthly * (adjustedROI / 100)
+	adjustedRevenue := budgetMonthly + adjustedProfit
+
+	if adjustedROI > 220 {
+		adjustedROI = 220
+	}
+
+	confidenceLevel := "Alta"
+	if confidenceScore < 50 {
+		confidenceLevel = "Baja"
+	} else if confidenceScore < 75 {
+		confidenceLevel = "Media"
+	}
+
+	riskLevel := "Bajo"
+	if adjustedROI < 0 {
+		riskLevel = "Alto"
+	} else if confidenceScore < 65 {
+		riskLevel = "Medio"
+	}
+	// ── FIN REALITY ENGINE ───────────────────────────────────────────────────
 
 	return AdsROIScenario{
 		Name:                name,
@@ -1368,15 +1443,22 @@ func calcROIScenario(
 		EstimatedCPL:        round2(cpl),
 		EstimatedSales:      sales,
 		TicketAverage:       round2(ticketAverage),
-		EstimatedRevenue:    round2(revenue),
-		EstimatedProfit:     round2(profit),
-		EstimatedROI:        round2(roi),
+		EstimatedRevenue: 	 round2(adjustedRevenue),
+		EstimatedProfit:     round2(adjustedProfit),
+		EstimatedROI:        round2(adjustedROI), // ROI ya ajustado por reality factor
 		BreakEvenCPL:        round2(breakEvenCPL),
 		Recommendation:      recommendation,
 		Decision:            decision,
 		ScaleSignal:         scaleSignal,
 		OptimizationTrigger: optimizationTrigger,
 		Industry:            industry,
+		// Reality Engine
+		RawROI:          round2(rawROI),
+		AdjustedROI:     round2(adjustedROI),
+		ConfidenceScore: round2(confidenceScore),
+		ConfidenceLevel: confidenceLevel,
+		RiskLevel:       riskLevel,
+		RealityWarnings: warnings,
 	}
 }
 
