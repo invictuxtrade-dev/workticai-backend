@@ -13,7 +13,191 @@ import (
 )
 
 // ─────────────────────────────────────────────
-// PASO 1 — NUEVAS VARIABLES
+// INDUSTRY BENCHMARK ENGINE
+// ─────────────────────────────────────────────
+
+// IndustryBenchmark contiene los rangos reales de métricas Meta Ads
+// por industria. Fuente: datos promedio del sector 2023-2024.
+type IndustryBenchmark struct {
+	// CTR (%)
+	MinCTR float64
+	AvgCTR float64
+	MaxCTR float64
+
+	// CPC (USD)
+	MinCPC float64
+	AvgCPC float64
+	MaxCPC float64
+
+	// CPM (USD)
+	MinCPM float64
+	AvgCPM float64
+	MaxCPM float64
+
+	// Tasa conversión landing → lead (%)
+	MinLandingConv float64
+	AvgLandingConv float64
+	MaxLandingConv float64
+
+	// Tasa cierre lead → venta (%)
+	MinCloseRate float64
+	AvgCloseRate float64
+	MaxCloseRate float64
+}
+
+// industryBenchmarks: mapa de industrias con benchmarks reales.
+// Keywords: al detectar el producto/nicho se busca la clave más cercana.
+var industryBenchmarks = map[string]IndustryBenchmark{
+	"wellness": {
+		MinCTR: 1.2, AvgCTR: 2.4, MaxCTR: 4.0,
+		MinCPC: 0.08, AvgCPC: 0.18, MaxCPC: 0.40,
+		MinCPM: 3.0, AvgCPM: 5.5, MaxCPM: 9.0,
+		MinLandingConv: 8, AvgLandingConv: 18, MaxLandingConv: 30,
+		MinCloseRate: 5, AvgCloseRate: 12, MaxCloseRate: 22,
+	},
+	"salud": {
+		MinCTR: 1.0, AvgCTR: 2.1, MaxCTR: 3.8,
+		MinCPC: 0.10, AvgCPC: 0.25, MaxCPC: 0.60,
+		MinCPM: 4.0, AvgCPM: 6.5, MaxCPM: 11.0,
+		MinLandingConv: 7, AvgLandingConv: 16, MaxLandingConv: 28,
+		MinCloseRate: 4, AvgCloseRate: 10, MaxCloseRate: 20,
+	},
+	"educacion": {
+		MinCTR: 0.9, AvgCTR: 1.8, MaxCTR: 3.2,
+		MinCPC: 0.15, AvgCPC: 0.35, MaxCPC: 0.80,
+		MinCPM: 5.0, AvgCPM: 8.0, MaxCPM: 14.0,
+		MinLandingConv: 10, AvgLandingConv: 20, MaxLandingConv: 35,
+		MinCloseRate: 5, AvgCloseRate: 13, MaxCloseRate: 25,
+	},
+	"ecommerce": {
+		MinCTR: 0.7, AvgCTR: 1.5, MaxCTR: 3.0,
+		MinCPC: 0.20, AvgCPC: 0.50, MaxCPC: 1.20,
+		MinCPM: 6.0, AvgCPM: 9.5, MaxCPM: 16.0,
+		MinLandingConv: 2, AvgLandingConv: 4, MaxLandingConv: 8,
+		MinCloseRate: 1.5, AvgCloseRate: 3.5, MaxCloseRate: 7,
+	},
+	"inmobiliaria": {
+		MinCTR: 0.5, AvgCTR: 1.2, MaxCTR: 2.5,
+		MinCPC: 0.60, AvgCPC: 1.50, MaxCPC: 4.00,
+		MinCPM: 7.0, AvgCPM: 12.0, MaxCPM: 20.0,
+		MinLandingConv: 3, AvgLandingConv: 8, MaxLandingConv: 15,
+		MinCloseRate: 1, AvgCloseRate: 4, MaxCloseRate: 10,
+	},
+	"finanzas": {
+		MinCTR: 0.4, AvgCTR: 1.0, MaxCTR: 2.2,
+		MinCPC: 0.80, AvgCPC: 2.00, MaxCPC: 5.00,
+		MinCPM: 8.0, AvgCPM: 14.0, MaxCPM: 24.0,
+		MinLandingConv: 4, AvgLandingConv: 9, MaxLandingConv: 18,
+		MinCloseRate: 2, AvgCloseRate: 6, MaxCloseRate: 14,
+	},
+	"restaurante": {
+		MinCTR: 1.5, AvgCTR: 3.0, MaxCTR: 5.5,
+		MinCPC: 0.05, AvgCPC: 0.12, MaxCPC: 0.30,
+		MinCPM: 2.5, AvgCPM: 4.5, MaxCPM: 8.0,
+		MinLandingConv: 10, AvgLandingConv: 22, MaxLandingConv: 40,
+		MinCloseRate: 8, AvgCloseRate: 18, MaxCloseRate: 35,
+	},
+	"moda": {
+		MinCTR: 0.8, AvgCTR: 1.8, MaxCTR: 3.5,
+		MinCPC: 0.15, AvgCPC: 0.40, MaxCPC: 1.00,
+		MinCPM: 5.0, AvgCPM: 8.5, MaxCPM: 15.0,
+		MinLandingConv: 3, AvgLandingConv: 7, MaxLandingConv: 14,
+		MinCloseRate: 2, AvgCloseRate: 5, MaxCloseRate: 12,
+	},
+	"tecnologia": {
+		MinCTR: 0.5, AvgCTR: 1.2, MaxCTR: 2.5,
+		MinCPC: 0.40, AvgCPC: 1.00, MaxCPC: 2.50,
+		MinCPM: 6.0, AvgCPM: 11.0, MaxCPM: 18.0,
+		MinLandingConv: 5, AvgLandingConv: 12, MaxLandingConv: 22,
+		MinCloseRate: 3, AvgCloseRate: 8, MaxCloseRate: 18,
+	},
+	"servicios_profesionales": {
+		MinCTR: 0.6, AvgCTR: 1.4, MaxCTR: 2.8,
+		MinCPC: 0.30, AvgCPC: 0.80, MaxCPC: 2.00,
+		MinCPM: 5.5, AvgCPM: 9.0, MaxCPM: 16.0,
+		MinLandingConv: 6, AvgLandingConv: 14, MaxLandingConv: 25,
+		MinCloseRate: 5, AvgCloseRate: 15, MaxCloseRate: 30,
+	},
+	"belleza": {
+		MinCTR: 1.3, AvgCTR: 2.8, MaxCTR: 5.0,
+		MinCPC: 0.06, AvgCPC: 0.15, MaxCPC: 0.35,
+		MinCPM: 3.0, AvgCPM: 5.5, MaxCPM: 9.5,
+		MinLandingConv: 8, AvgLandingConv: 18, MaxLandingConv: 32,
+		MinCloseRate: 6, AvgCloseRate: 14, MaxCloseRate: 26,
+	},
+	"viajes": {
+		MinCTR: 0.6, AvgCTR: 1.4, MaxCTR: 3.0,
+		MinCPC: 0.25, AvgCPC: 0.70, MaxCPC: 1.80,
+		MinCPM: 5.0, AvgCPM: 9.0, MaxCPM: 15.0,
+		MinLandingConv: 4, AvgLandingConv: 10, MaxLandingConv: 20,
+		MinCloseRate: 2, AvgCloseRate: 6, MaxCloseRate: 15,
+	},
+	"default": {
+		MinCTR: 0.8, AvgCTR: 1.6, MaxCTR: 3.0,
+		MinCPC: 0.20, AvgCPC: 0.55, MaxCPC: 1.40,
+		MinCPM: 5.0, AvgCPM: 8.5, MaxCPM: 15.0,
+		MinLandingConv: 6, AvgLandingConv: 14, MaxLandingConv: 25,
+		MinCloseRate: 4, AvgCloseRate: 10, MaxCloseRate: 20,
+	},
+}
+
+// industryKeywords mapea palabras clave detectables en el producto/nicho
+// hacia la clave del benchmark correspondiente.
+var industryKeywords = map[string][]string{
+	"wellness":                {"bienestar", "meditación", "mindfulness", "yoga", "meditacion", "wellness", "spa", "relajación", "relajacion", "estrés", "estres", "mental"},
+	"salud":                   {"salud", "médico", "medico", "clínica", "clinica", "hospital", "nutrición", "nutricion", "dieta", "suplemento", "vitamina", "fisioterapia", "odontología", "odontologia", "dental", "farmacia", "psicología", "psicologia"},
+	"educacion":               {"curso", "educación", "educacion", "academia", "aprendizaje", "formación", "formacion", "certificación", "certificacion", "coaching", "mentoring", "clase", "taller", "capacitación", "capacitacion", "enseñanza", "online", "virtual"},
+	"ecommerce":               {"tienda", "shop", "store", "producto", "compra", "venta online", "ecommerce", "delivery", "envío", "envio", "catálogo", "catalogo"},
+	"inmobiliaria":            {"inmobiliaria", "propiedad", "apartamento", "casa", "arriendo", "venta inmueble", "finca raíz", "finca raiz", "lote", "terreno", "constructora", "conjunto"},
+	"finanzas":                {"finanzas", "crédito", "credito", "préstamo", "prestamo", "inversión", "inversion", "seguro", "ahorro", "banco", "crypto", "criptomoneda", "bolsa", "trading"},
+	"restaurante":             {"restaurante", "comida", "menú", "menu", "gastronomía", "gastronomia", "cafetería", "cafeteria", "delivery comida", "pizzería", "pizzeria", "sushi", "burger", "panadería", "panaderia"},
+	"moda":                    {"ropa", "moda", "fashion", "vestido", "camiseta", "zapato", "accesorio", "joyería", "joyeria", "bolso", "calzado", "outfit"},
+	"tecnologia":              {"software", "app", "tecnología", "tecnologia", "saas", "desarrollo", "programación", "programacion", "startup", "digital", "automatización", "automatizacion", "inteligencia artificial", "ia"},
+	"servicios_profesionales": {"consultoría", "consultoria", "abogado", "contador", "arquitecto", "diseñador", "disenador", "marketing", "publicidad", "agencia", "asesoría", "asesoria", "freelance", "servicio"},
+	"belleza":                 {"belleza", "peluquería", "peluqueria", "estética", "estetica", "maquillaje", "manicure", "pedicure", "extensiones", "tratamiento capilar", "barbería", "barberia"},
+	"viajes":                  {"viaje", "turismo", "hotel", "vuelo", "paquete turístico", "paquete turistico", "tour", "excursión", "excursion", "crucero", "hospedaje", "alojamiento"},
+}
+
+// detectIndustry analiza el texto del producto y la oferta
+// para encontrar el benchmark más adecuado.
+func detectIndustry(product, offer, target string) string {
+	text := strings.ToLower(product + " " + offer + " " + target)
+
+	bestIndustry := "default"
+	bestScore := 0
+
+	for industry, keywords := range industryKeywords {
+		score := 0
+
+		for _, kw := range keywords {
+			if strings.Contains(text, kw) {
+				score++
+			}
+		}
+
+		if score > bestScore {
+			bestScore = score
+			bestIndustry = industry
+		}
+	}
+
+	if bestScore == 0 {
+		return "default"
+	}
+
+	return bestIndustry
+}
+
+// getBenchmark retorna el benchmark de una industria o el default.
+func getBenchmark(industry string) IndustryBenchmark {
+	if b, ok := industryBenchmarks[industry]; ok {
+		return b
+	}
+	return industryBenchmarks["default"]
+}
+
+// ─────────────────────────────────────────────
+// CAMPAIGN METRICS
 // ─────────────────────────────────────────────
 
 type CampaignMetrics struct {
@@ -35,65 +219,65 @@ type CampaignMetrics struct {
 }
 
 // ─────────────────────────────────────────────
-// PASO 2 — BREAK EVEN
+// BREAK EVEN
 // ─────────────────────────────────────────────
 
 func calculateBreakEven(metrics *CampaignMetrics) {
 	if metrics.Leads == 0 || metrics.Ticket == 0 {
 		return
 	}
-
-	// ventas necesarias para no perder dinero
 	breakEvenSales := metrics.Budget / metrics.Ticket
-
-	// conversión necesaria (como decimal, ej: 0.05 = 5%)
 	metrics.BreakEvenConversion = breakEvenSales / metrics.Leads
 }
 
 // ─────────────────────────────────────────────
-// PASO 3 — DIAGNÓSTICO INTELIGENTE
+// DIAGNÓSTICO INTELIGENTE
+// Umbrales corregidos: menos agresivos, más realistas.
 // ─────────────────────────────────────────────
 
 func diagnoseCampaign(m *CampaignMetrics) []string {
 	issues := []string{}
 
-	if m.ROI < 0 {
-		issues = append(issues, "ROI negativo")
+	// Solo marcar ROI negativo si es menor a -20% (no a cualquier negativo)
+	if m.ROI < -20 {
+		issues = append(issues, "ROI muy negativo (peor de -20%)")
+	} else if m.ROI < 0 {
+		issues = append(issues, "ROI negativo leve — requiere ajuste")
 	}
-	if m.CTR < 1 {
-		issues = append(issues, "CTR bajo")
+
+	// CTR bajo si es menor a 0.5% (antes era 1%, demasiado agresivo)
+	if m.CTR < 0.5 {
+		issues = append(issues, "CTR bajo (< 0.5%) — revisar creativos y copy")
 	}
-	if m.CPL > m.Ticket*0.3 {
-		issues = append(issues, "CPL demasiado alto")
+
+	// CPL alto si supera el 60% del ticket (antes era 30%, imposible para WhatsApp)
+	if m.CPL > m.Ticket*0.6 {
+		issues = append(issues, "CPL demasiado alto respecto al ticket promedio")
 	}
-	if m.ConversionRate < m.BreakEvenConversion {
-		issues = append(issues, "Conversión insuficiente para rentabilidad")
+
+	// Conversión insuficiente para rentabilidad
+	if m.BreakEvenConversion > 0 && m.ConversionRate < m.BreakEvenConversion {
+		issues = append(issues, "Tasa de conversión por debajo del punto de equilibrio")
 	}
 
 	return issues
 }
 
 // ─────────────────────────────────────────────
-// PASO 4 — AUTO-OPTIMIZACIÓN
+// AUTO-OPTIMIZACIÓN
 // ─────────────────────────────────────────────
 
 func optimizeCampaign(m *CampaignMetrics) {
-	// mejorar CTR
-	if m.CTR < 1.2 {
+	if m.CTR < 1.0 {
 		m.CTR *= 1.3
 	}
-
-	// reducir CPL
-	if m.CPL > m.Ticket*0.3 {
-		m.CPL *= 0.7
+	if m.CPL > m.Ticket*0.6 {
+		m.CPL *= 0.75
 	}
-
-	// mejorar conversión
-	if m.ConversionRate < 0.05 {
+	if m.ConversionRate < 0.04 {
 		m.ConversionRate *= 1.5
 	}
 
-	// recalcular
 	if m.CPL > 0 {
 		m.Leads = m.Budget / m.CPL
 	}
@@ -106,81 +290,91 @@ func optimizeCampaign(m *CampaignMetrics) {
 }
 
 // ─────────────────────────────────────────────
-// PASO 5 — LOOP INTELIGENTE
+// LOOP INTELIGENTE
 // ─────────────────────────────────────────────
 
 func autoImproveCampaign(m *CampaignMetrics) {
 	for i := 0; i < 5; i++ {
 		calculateBreakEven(m)
-
 		if m.ROI > 0 {
 			break
 		}
-
 		optimizeCampaign(m)
 	}
 }
 
 // ─────────────────────────────────────────────
-// PASO 6 — SCORE PROFESIONAL
+// SCORE PROFESIONAL
+// Scoring más justo: no destruye todo por un ROI ligeramente negativo.
 // ─────────────────────────────────────────────
 
 func calculateScore(m *CampaignMetrics) int {
 	score := 100
 
-	if m.ROI < 0 {
+	// ROI — penalidad proporcional
+	if m.ROI < -50 {
 		score -= 40
+	} else if m.ROI < -20 {
+		score -= 25
+	} else if m.ROI < 0 {
+		score -= 12
 	}
-	if m.CTR < 1 {
+
+	// CTR — umbral reducido a 0.5%
+	if m.CTR < 0.5 {
 		score -= 20
+	} else if m.CTR < 1.0 {
+		score -= 8
 	}
-	if m.CPL > m.Ticket*0.3 {
+
+	// CPL — umbral más generoso: 60% del ticket
+	if m.CPL > m.Ticket*0.6 {
 		score -= 20
+	} else if m.CPL > m.Ticket*0.4 {
+		score -= 8
 	}
-	if m.ConversionRate < m.BreakEvenConversion {
+
+	// Conversión vs break-even
+	if m.BreakEvenConversion > 0 && m.ConversionRate < m.BreakEvenConversion {
 		score -= 20
 	}
 
 	if score < 0 {
 		score = 0
 	}
-
 	return score
 }
 
 // ─────────────────────────────────────────────
-// PASO 7 — DECISIÓN AUTOMÁTICA
+// DECISIÓN AUTOMÁTICA
 // ─────────────────────────────────────────────
 
 func generateDecision(m *CampaignMetrics, score int) string {
-	if m.ROI < 0 {
-		return "❌ No lanzar campaña. Ajustar oferta, precio o conversión."
+	if m.ROI < -50 {
+		return "❌ No lanzar campaña. Ajustar oferta, precio o proceso de cierre antes de invertir."
 	}
-	if score < 60 {
-		return "⚠️ Campaña débil. Requiere optimización antes de escalar."
+	if score < 50 {
+		return "⚠️ Campaña con riesgo alto. Optimizar creativos, CPL y tasa de conversión antes de escalar."
 	}
-	if score < 80 {
-		return "🟡 Campaña viable. Probar con bajo presupuesto."
+	if score < 70 {
+		return "🟡 Campaña viable con ajustes. Probar con presupuesto mínimo y medir CPL real."
 	}
-	return "🟢 Escalar campaña. Buen potencial de rentabilidad."
+	if score < 85 {
+		return "🟢 Campaña prometedora. Lanzar prueba y escalar al confirmar CPL objetivo."
+	}
+	return "🚀 Campaña con alto potencial. Escalar agresivamente si el CPL real se mantiene."
 }
 
 // ─────────────────────────────────────────────
-// PASO 8 — HELPER: inicializar y correr métricas
+// EVALUACIÓN DE CAMPAÑA
 // ─────────────────────────────────────────────
 
-// CampaignEvaluation separa el diagnóstico REAL de la proyección optimizada.
-// ScoreReal / DecisionReal reflejan los números tal como vienen del ROI.
-// OptimizedProjection muestra cómo quedarían las métricas si se aplican
-// las optimizaciones sugeridas (no reemplaza la realidad, solo la proyecta).
 type CampaignEvaluation struct {
-	// Diagnóstico sobre métricas reales (sin tocar)
 	RealMetrics  *CampaignMetrics
 	ScoreReal    int
 	DecisionReal string
 	IssuesReal   []string
 
-	// Proyección si se optimiza la campaña
 	OptimizedProjection *CampaignMetrics
 	ScoreOptimized      int
 	DecisionOptimized   string
@@ -190,14 +384,10 @@ func evaluateCampaign(budget, ticket, cpl, ctr, cpm, conversionRate float64) Cam
 	if conversionRate <= 0 {
 		conversionRate = 5
 	}
-
-	// LeadCloseRate viene como porcentaje (ej: 5.0 = 5%).
-	// Convertir a decimal para los cálculos internos.
 	if conversionRate > 1 {
 		conversionRate = conversionRate / 100
 	}
 
-	// ── métricas REALES (snapshot fiel del ROI calculado) ──
 	real := &CampaignMetrics{
 		Budget:         budget,
 		Ticket:         ticket,
@@ -222,7 +412,6 @@ func evaluateCampaign(budget, ticket, cpl, ctr, cpm, conversionRate float64) Cam
 	scoreReal := calculateScore(real)
 	decisionReal := generateDecision(real, scoreReal)
 
-	// ── proyección OPTIMIZADA (copia independiente, no modifica real) ──
 	opt := &CampaignMetrics{
 		Budget:         real.Budget,
 		Ticket:         real.Ticket,
@@ -314,6 +503,9 @@ type AdsROIProjection struct {
 	EstimatedProfit  float64 `json:"estimated_profit"`
 	EstimatedROI     float64 `json:"estimated_roi"`
 	BreakEvenCPL     float64 `json:"break_even_cpl"`
+
+	// Nuevo: industria detectada para contexto
+	Industry string `json:"industry"`
 }
 
 type AdsROIScenario struct {
@@ -340,6 +532,9 @@ type AdsROIScenario struct {
 	Decision            string  `json:"decision"`
 	ScaleSignal         string  `json:"scale_signal"`
 	OptimizationTrigger string  `json:"optimization_trigger"`
+
+	// Nuevo: industria asociada
+	Industry string `json:"industry"`
 }
 
 type AdsCampaignPlan struct {
@@ -394,14 +589,15 @@ type AdsCampaignPlan struct {
 	ScaleRules      []string `json:"scale_rules"`
 	KillRules       []string `json:"kill_rules"`
 
-	// ── Campos nuevos del sistema de evaluación ──
+	// Industria detectada para contexto y benchmarks
+	Industry string `json:"industry"`
 
-	// Diagnóstico sobre las métricas reales del escenario base
+	// Diagnóstico sobre métricas reales
 	CampaignScoreReal    int      `json:"campaign_score_real"`
 	CampaignDecisionReal string   `json:"campaign_decision_real"`
 	CampaignIssues       []string `json:"campaign_issues"`
 
-	// Proyección si se aplican las optimizaciones sugeridas
+	// Proyección si se aplican optimizaciones
 	CampaignScoreOptimized    int    `json:"campaign_score_optimized"`
 	CampaignDecisionOptimized string `json:"campaign_decision_optimized"`
 }
@@ -590,32 +786,31 @@ Condiciones:
 		if repairErr != nil {
 			return AdsCampaignPlan{}, fmt.Errorf("respuesta IA inválida")
 		}
-
 		fixed = cleanAIJSON(fixed)
-
 		if err2 := json.Unmarshal([]byte(fixed), &plan); err2 != nil {
 			return AdsCampaignPlan{}, fmt.Errorf("respuesta IA inválida")
 		}
 	}
 
-	plan = normalizeCampaignPlan(plan, product, offer, target, country, currency, budgetDaily, ticketAverage)
+	// Detectar industria ANTES de normalizar para que los benchmarks sean correctos
+	industry := detectIndustry(product, offer, target)
+	plan.Industry = industry
 
-	// ── PASO 8: evaluar con el sistema de métricas ──
+	plan = normalizeCampaignPlan(plan, product, offer, target, country, currency, budgetDaily, ticketAverage, industry)
+
+	// Evaluar con el sistema de métricas
 	eval := evaluateCampaign(
 		plan.BudgetMonthly,
 		ticketAverage,
 		plan.ROI.EstimatedCPL,
 		plan.ROI.EstimatedCTR,
 		plan.ROI.EstimatedCPM,
-		plan.ROI.ConversionRate, // viene como porcentaje (ej: 5.0), evaluateCampaign lo convierte
+		plan.ROI.ConversionRate,
 	)
 
-	// diagnóstico real
 	plan.CampaignScoreReal = eval.ScoreReal
 	plan.CampaignDecisionReal = eval.DecisionReal
 	plan.CampaignIssues = eval.IssuesReal
-
-	// proyección optimizada
 	plan.CampaignScoreOptimized = eval.ScoreOptimized
 	plan.CampaignDecisionOptimized = eval.DecisionOptimized
 
@@ -680,6 +875,7 @@ func normalizeCampaignPlan(
 	currency string,
 	budgetDaily float64,
 	ticketAverage float64,
+	industry string,
 ) AdsCampaignPlan {
 	product = strings.TrimSpace(product)
 	offer = strings.TrimSpace(offer)
@@ -764,7 +960,8 @@ func normalizeCampaignPlan(
 		plan.WhatsAppScript = "Hola, gracias por escribirnos. Cuéntame qué estás buscando y te ayudo a elegir la mejor opción."
 	}
 
-	plan = normalizeROI(plan, budgetDaily, ticketAverage, currency)
+	// Pasar la industria para normalizar ROI con benchmarks correctos
+	plan = normalizeROI(plan, budgetDaily, ticketAverage, currency, industry)
 	plan = normalizeStrategicBlocks(plan, product, offer, target, country)
 
 	return plan
@@ -985,11 +1182,13 @@ func normalizeStrategicBlocks(plan AdsCampaignPlan, product, offer, target, coun
 }
 
 // ─────────────────────────────────────────────
-// ROI
+// ROI — AHORA CONTEXTUAL POR INDUSTRIA
 // ─────────────────────────────────────────────
 
-func normalizeROI(plan AdsCampaignPlan, budgetDaily float64, ticketAverage float64, currency string) AdsCampaignPlan {
-	scenarios := buildROIScenarios(budgetDaily, ticketAverage, currency)
+// normalizeROI usa el benchmark de la industria detectada para
+// generar escenarios realistas en lugar de valores estáticos.
+func normalizeROI(plan AdsCampaignPlan, budgetDaily float64, ticketAverage float64, currency string, industry string) AdsCampaignPlan {
+	scenarios := buildROIScenarios(budgetDaily, ticketAverage, currency, industry)
 
 	realistic := scenarios[1]
 
@@ -1020,6 +1219,7 @@ func normalizeROI(plan AdsCampaignPlan, budgetDaily float64, ticketAverage float
 		EstimatedProfit:  realistic.EstimatedProfit,
 		EstimatedROI:     realistic.EstimatedROI,
 		BreakEvenCPL:     realistic.BreakEvenCPL,
+		Industry:         industry,
 	}
 
 	plan.ROIScenarios = scenarios
@@ -1027,7 +1227,9 @@ func normalizeROI(plan AdsCampaignPlan, budgetDaily float64, ticketAverage float
 	return plan
 }
 
-func buildROIScenarios(budgetDaily float64, ticketAverage float64, currency string) []AdsROIScenario {
+// buildROIScenarios construye 3 escenarios usando los benchmarks reales
+// de la industria detectada: Conservador (Min), Realista (Avg), Agresivo (Max).
+func buildROIScenarios(budgetDaily float64, ticketAverage float64, currency string, industry string) []AdsROIScenario {
 	if budgetDaily <= 0 {
 		budgetDaily = 10
 	}
@@ -1036,6 +1238,7 @@ func buildROIScenarios(budgetDaily float64, ticketAverage float64, currency stri
 	}
 
 	budgetMonthly := budgetDaily * 30
+	b := getBenchmark(industry)
 
 	return []AdsROIScenario{
 		calcROIScenario(
@@ -1044,10 +1247,11 @@ func buildROIScenarios(budgetDaily float64, ticketAverage float64, currency stri
 			budgetDaily,
 			budgetMonthly,
 			ticketAverage,
-			7.5,
-			0.75,
-			7.0,
-			2.5,
+			b.MaxCPM,            // CPM promedio de la industria
+			b.MinCTR,            // CTR mínimo de la industria
+			b.MinLandingConv,    // Landing conv mínima
+			b.MinCloseRate,      // Close rate mínimo
+			industry,
 			"Validar oferta y creativos antes de escalar. Si el CPL supera el break-even, ajustar copy, oferta o segmentación.",
 			"Probar sin escalar hasta tener mejores señales.",
 			"Escalar solo si el CPL baja por debajo del punto de equilibrio.",
@@ -1059,10 +1263,11 @@ func buildROIScenarios(budgetDaily float64, ticketAverage float64, currency stri
 			budgetDaily,
 			budgetMonthly,
 			ticketAverage,
-			5.5,
-			1.25,
-			10.0,
-			5.0,
+			b.AvgCPM,            // CPM promedio
+			b.AvgCTR,            // CTR promedio
+			b.AvgLandingConv,    // Landing conv promedio
+			b.AvgCloseRate,      // Close rate promedio
+			industry,
 			"Escenario base para tomar decisiones iniciales. Medir 5 a 7 días antes de escalar presupuesto.",
 			"Lanzar prueba controlada con 3 adsets y 4 creativos.",
 			"Escalar 15% a 20% si el CPL se mantiene estable.",
@@ -1074,10 +1279,11 @@ func buildROIScenarios(budgetDaily float64, ticketAverage float64, currency stri
 			budgetDaily,
 			budgetMonthly,
 			ticketAverage,
-			4.0,
-			2.0,
-			16.0,
-			8.0,
+			b.MinCPM,            // CPM mínimo (mejor caso de eficiencia)
+			b.MaxCTR,            // CTR máximo
+			b.MaxLandingConv,    // Landing conv máxima
+			b.MaxCloseRate,      // Close rate máximo
+			industry,
 			"Solo escalar a este escenario si hay buen CTR, buen CPL, respuesta rápida y cierre comercial comprobado.",
 			"Escalar creativos ganadores y activar remarketing.",
 			"Duplicar adset ganador y aumentar presupuesto gradualmente.",
@@ -1096,6 +1302,7 @@ func calcROIScenario(
 	ctrPercent float64,
 	landingConvPercent float64,
 	closeRatePercent float64,
+	industry string,
 	recommendation string,
 	decision string,
 	scaleSignal string,
@@ -1120,7 +1327,13 @@ func calcROIScenario(
 		cpl = budgetMonthly / float64(leads)
 	}
 
-	sales := int(math.Round(float64(leads) * (closeRatePercent / 100)))
+	salesFloat := float64(leads) * (closeRatePercent / 100)
+
+	sales := int(math.Floor(salesFloat))
+
+	if sales == 0 && leads > 3 {
+		sales = 1
+	}
 
 	revenue := float64(sales) * ticketAverage
 	profit := revenue - budgetMonthly
@@ -1128,6 +1341,10 @@ func calcROIScenario(
 	roi := 0.0
 	if budgetMonthly > 0 {
 		roi = (profit / budgetMonthly) * 100
+	}
+
+	if roi > 500 {
+    roi = 500
 	}
 
 	breakEvenCPL := 0.0
@@ -1159,6 +1376,7 @@ func calcROIScenario(
 		Decision:            decision,
 		ScaleSignal:         scaleSignal,
 		OptimizationTrigger: optimizationTrigger,
+		Industry:            industry,
 	}
 }
 
