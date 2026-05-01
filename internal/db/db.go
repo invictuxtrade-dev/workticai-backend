@@ -72,6 +72,12 @@ func Open(path string) (*sql.DB, error) {
 	`ALTER TABLE social_posts ADD COLUMN published_at TIMESTAMP NULL`,
 
 	`ALTER TABLE clients ADD COLUMN plan TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE ads_campaigns ADD COLUMN bot_id TEXT DEFAULT ''`,
+	`ALTER TABLE ads_campaigns ADD COLUMN landing_id TEXT DEFAULT ''`,
+	`ALTER TABLE ads_campaigns ADD COLUMN ecosystem_status TEXT DEFAULT 'draft'`,
+	`ALTER TABLE ads_campaigns ADD COLUMN auto_bot_enabled INTEGER DEFAULT 1`,
+	`ALTER TABLE ads_campaigns ADD COLUMN auto_landing_enabled INTEGER DEFAULT 1`,
+	`ALTER TABLE ads_campaigns ADD COLUMN auto_creatives_enabled INTEGER DEFAULT 1`,
 }
 
 	for _, q := range softMigrations {

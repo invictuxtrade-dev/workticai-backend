@@ -1672,3 +1672,56 @@ func (s *AdsService) SaveCampaign(clientID string, plan AdsCampaignPlan, rawJSON
 
 	return id, err
 }
+
+func (s *AdsService) SaveCampaignEcosystem(
+	clientID string,
+	plan AdsCampaignPlan,
+	rawJSON string,
+	botID string,
+	landingID string,
+) (string, error) {
+	clientID = strings.TrimSpace(clientID)
+	if clientID == "" {
+		return "", fmt.Errorf("client_id required")
+	}
+
+	id := uuid.NewString()
+	now := time.Now()
+
+	if rawJSON == "" {
+		b, _ := json.Marshal(plan)
+		rawJSON = string(b)
+	}
+
+	_, err := s.DB.Exec(`
+		INSERT INTO ads_campaigns (
+			id, client_id, name, objective, product, offer, target_audience,
+			budget_daily, budget_monthly, status, ai_plan_json,
+			bot_id, landing_id, ecosystem_status,
+			auto_bot_enabled, auto_landing_enabled, auto_creatives_enabled,
+			created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		id,
+		clientID,
+		plan.Name,
+		plan.Objective,
+		plan.Product,
+		plan.Offer,
+		plan.TargetAudience,
+		plan.BudgetDaily,
+		plan.BudgetMonthly,
+		"draft",
+		rawJSON,
+		botID,
+		landingID,
+		"ready_pending_whatsapp",
+		1,
+		1,
+		1,
+		now,
+		now,
+	)
+
+	return id, err
+}

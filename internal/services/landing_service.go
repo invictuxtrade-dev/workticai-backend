@@ -24,14 +24,20 @@ func (s *LandingService) GenerateLanding(
 	cfg models.BotConfig,
 	in models.LandingPage,
 ) (models.LandingPage, error) {
-	if bot.Phone == "" {
-		return models.LandingPage{}, fmt.Errorf("el bot no tiene número conectado")
-	}
+	whatsappURL := "#"
 
-	whatsappURL := fmt.Sprintf(
-		"https://wa.me/%s?text=Hola%%20quiero%%20informaci%C3%B3n",
-		bot.Phone,
-	)
+	if strings.TrimSpace(bot.Phone) != "" {
+		whatsappURL = fmt.Sprintf(
+			"https://wa.me/%s?text=Hola%%20quiero%%20informaci%C3%B3n",
+			bot.Phone,
+		)
+	} else if strings.TrimSpace(cfg.HumanHandoffPhone) != "" {
+		phone := strings.TrimPrefix(strings.TrimSpace(cfg.HumanHandoffPhone), "+")
+		whatsappURL = fmt.Sprintf(
+			"https://wa.me/%s?text=Hola%%20quiero%%20informaci%C3%B3n",
+			phone,
+		)
+	}
 
 	stylePreset := strings.TrimSpace(in.StylePreset)
 	if stylePreset == "" {

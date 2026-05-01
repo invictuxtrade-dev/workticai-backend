@@ -115,6 +115,7 @@ func (s *Server) routes() {
 
 	secured.HandleFunc("/ads/campaigns", s.handleListAdsCampaigns).Methods("GET", "OPTIONS")
 	secured.HandleFunc("/ads/generate-campaign", s.handleGenerateAdsCampaign).Methods("POST", "OPTIONS")
+	secured.HandleFunc("/ads/ecosystem", s.handleCreateAdsEcosystem).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/ads/campaigns", s.handleCreateAdsCampaign).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/ads/campaigns/{id}/status", s.handleUpdateAdsCampaignStatus).Methods("PATCH", "OPTIONS")
 }
@@ -1811,4 +1812,286 @@ type AdsCampaignPlan struct {
 	EstimatedRevenue   float64  `json:"estimated_revenue"`
 	EstimatedROI       float64  `json:"estimated_roi"`
 	Recommendations    []string `json:"recommendations"`
+}
+
+func (s *Server) handleCreateAdsEcosystem(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+
+	var body struct {
+		BusinessName  string  `json:"business_name"`
+		Product       string  `json:"product"`
+		Offer         string  `json:"offer"`
+		Target        string  `json:"target"`
+		Country       string  `json:"country"`
+		BudgetDaily   float64 `json:"budget_daily"`
+		TicketAverage float64 `json:"ticket_average"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+
+	body.BusinessName = strings.TrimSpace(body.BusinessName)
+	body.Product = strings.TrimSpace(body.Product)
+	body.Offer = strings.TrimSpace(body.Offer)
+	body.Target = strings.TrimSpace(body.Target)
+	body.Country = strings.TrimSpace(body.Country)
+
+	if body.Product == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "product required"})
+		return
+	}
+	if body.Offer == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "offer required"})
+		return
+	}
+	if body.Target == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "target required"})
+		return
+	}
+
+	clientID := u.ClientID
+	if u.Role == "admin" {
+		clientID = r.URL.Query().Get("client_id")
+		if clientID == "" {
+			clientID = u.ClientID
+		}
+	}
+
+	if strings.TrimSpace(clientID) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "client_id required"})
+		return
+	}
+
+	// 1) Generar plan de campaña
+	plan, err := s.Ads.GenerateCampaignPlan(
+		r.Context(),
+		body.BusinessName,
+		body.Product,
+		body.Offer,
+		body.Target,
+		body.Country,
+		body.BudgetDaily,
+		body.TicketAverage,
+	)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	// 2) Crear bot automático
+	botName := "Bot - " + plan.Product
+	if strings.TrimSpace(plan.Name) != "" {
+		botName = "Bot - " + plan.Name
+	}
+
+	bot, err := s.Manager.CreateBot(clientID, botName)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	// 3) Configurar bot desde la campaña
+	cfg := models.BotConfig{
+		BotID:               bot.ID,
+		SystemPrompt:        buildAdsBotPrompt(plan),
+		BusinessName:        body.BusinessName,
+		BusinessDescription: plan.ValueProposition,
+		Offer:               plan.Offer,
+		TargetAudience:      plan.TargetAudience,
+		Tone:                "Profesional, humano, asesor y vendedor",
+		CTAButtonText:       plan.CTA,
+		CTALink:             "",
+		FallbackMessage:     "Gracias por escribirnos. En breve te ayudo con toda la información.",
+		HumanHandoffPhone:   "",
+		Temperature:         0.7,
+		Model:               "gpt-4o-mini",
+		FollowupEnabled:     true,
+		FollowupDelayMins:   60,
+		ReplyMode:           "manual",
+		TemplateID:          "",
+	}
+
+	_, _ = s.Manager.UpsertBotConfig(cfg)
+
+	// 4) Generar landing automática
+	landingPrompt := buildAdsLandingPrompt(plan)
+
+	lp, err := s.Manager.Landing.GenerateLanding(
+		r.Context(),
+		bot,
+		cfg,
+		models.LandingPage{
+			ClientID:        clientID,
+			BotID:           bot.ID,
+			Name:            "Landing - " + plan.Product,
+			Prompt:          landingPrompt,
+			Status:          "generated",
+			StylePreset:     "dark_premium",
+			PrimaryColor:    "#2563eb",
+			SecondaryColor:  "#0f172a",
+			ShowVideo:       false,
+			ShowImage:       false,
+			TrackingMode:    "auto",
+			TrackingBaseURL: "",
+		},
+	)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	if lp.ID == "" {
+		lp.ID = uuid.NewString()
+	}
+	if lp.ClientID == "" {
+		lp.ClientID = clientID
+	}
+	if lp.BotID == "" {
+		lp.BotID = bot.ID
+	}
+	if lp.Status == "" {
+		lp.Status = "generated"
+	}
+	if lp.CreatedAt.IsZero() {
+		lp.CreatedAt = time.Now()
+	}
+	lp.UpdatedAt = time.Now()
+
+	_, err = s.DB.Exec(`
+		INSERT INTO landing_pages (
+			id, client_id, bot_id, name, prompt, status,
+			style_preset, logo_url, favicon_url, hero_image_url, youtube_url,
+			facebook_pixel_id, google_analytics,
+			primary_color, secondary_color,
+			show_video, show_image,
+			html, css, js, preview_html, whatsapp_url,
+			tracking_mode, tracking_base_url,
+			created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		lp.ID, lp.ClientID, lp.BotID, lp.Name, lp.Prompt, lp.Status,
+		lp.StylePreset, lp.LogoURL, lp.FaviconURL, lp.HeroImageURL, lp.YoutubeURL,
+		lp.FacebookPixelID, lp.GoogleAnalytics,
+		lp.PrimaryColor, lp.SecondaryColor,
+		lp.ShowVideo, lp.ShowImage,
+		lp.Html, lp.Css, lp.Js, lp.PreviewHTML, lp.WhatsappURL,
+		lp.TrackingMode, lp.TrackingBaseURL,
+		lp.CreatedAt, lp.UpdatedAt,
+	)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	// 5) Guardar campaña asociada al bot y landing
+	raw, _ := json.Marshal(plan)
+
+	campaignID, err := s.Ads.SaveCampaignEcosystem(
+		clientID,
+		plan,
+		string(raw),
+		bot.ID,
+		lp.ID,
+	)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"success":          true,
+		"campaign_id":      campaignID,
+		"bot_id":           bot.ID,
+		"landing_id":       lp.ID,
+		"ecosystem_status": "ready_pending_whatsapp",
+		"plan":             plan,
+		"bot":              bot,
+		"landing":          lp,
+	})
+}
+
+func buildAdsBotPrompt(plan services.AdsCampaignPlan) string {
+	var b strings.Builder
+
+	b.WriteString("Eres un asesor comercial experto por WhatsApp.\n")
+	b.WriteString("Tu tarea es atender leads provenientes de una campaña publicitaria y convertirlos en clientes.\n\n")
+
+	b.WriteString("PRODUCTO/SERVICIO:\n")
+	b.WriteString(plan.Product + "\n\n")
+
+	b.WriteString("OFERTA:\n")
+	b.WriteString(plan.Offer + "\n\n")
+
+	b.WriteString("PÚBLICO OBJETIVO:\n")
+	b.WriteString(plan.TargetAudience + "\n\n")
+
+	b.WriteString("PROPUESTA DE VALOR:\n")
+	b.WriteString(plan.ValueProposition + "\n\n")
+
+	b.WriteString("DOLORES DEL CLIENTE:\n")
+	for _, p := range plan.PainPoints {
+		b.WriteString("- " + p + "\n")
+	}
+
+	b.WriteString("\nÁNGULOS DE VENTA:\n")
+	for _, a := range plan.Angles {
+		b.WriteString("- " + a + "\n")
+	}
+
+	b.WriteString("\nGUION BASE DE WHATSAPP:\n")
+	b.WriteString(plan.WhatsAppScript + "\n\n")
+
+	b.WriteString("REGLAS:\n")
+	b.WriteString("- Responde de forma humana, breve y natural.\n")
+	b.WriteString("- Haz preguntas para entender la necesidad del cliente.\n")
+	b.WriteString("- No prometas resultados garantizados.\n")
+	b.WriteString("- Maneja objeciones con calma.\n")
+	b.WriteString("- Lleva al usuario hacia la acción principal.\n")
+	b.WriteString("- Si el usuario pide hablar con un humano, deriva amablemente.\n")
+
+	return b.String()
+}
+
+func buildAdsLandingPrompt(plan services.AdsCampaignPlan) string {
+	var b strings.Builder
+
+	b.WriteString("Crear una landing page de alta conversión para esta campaña.\n\n")
+
+	b.WriteString("Nombre campaña: " + plan.Name + "\n")
+	b.WriteString("Producto: " + plan.Product + "\n")
+	b.WriteString("Oferta: " + plan.Offer + "\n")
+	b.WriteString("Público: " + plan.TargetAudience + "\n")
+	b.WriteString("Propuesta de valor: " + plan.ValueProposition + "\n\n")
+
+	b.WriteString("Copy principal:\n")
+	b.WriteString(plan.PrimaryText + "\n\n")
+
+	b.WriteString("Headline:\n")
+	b.WriteString(plan.Headline + "\n\n")
+
+	b.WriteString("Descripción:\n")
+	b.WriteString(plan.Description + "\n\n")
+
+	b.WriteString("Dolores:\n")
+	for _, p := range plan.PainPoints {
+		b.WriteString("- " + p + "\n")
+	}
+
+	b.WriteString("\nÁngulos:\n")
+	for _, a := range plan.Angles {
+		b.WriteString("- " + a + "\n")
+	}
+
+	b.WriteString("\nEstructura recomendada del funnel:\n")
+	for _, s := range plan.Funnel.LandingStructure {
+		b.WriteString("- " + s + "\n")
+	}
+
+	b.WriteString("\nCTA principal: " + plan.CTA + "\n")
+	b.WriteString("Destino principal: WhatsApp.\n")
+	b.WriteString("La landing debe ser profesional, persuasiva, responsive y orientada a conversión.\n")
+
+	return b.String()
 }
