@@ -52,8 +52,15 @@ func New(
 }
 
 func NewServer() (*Server, error) {
-	dataDir := filepath.Join("data")
-	dbPath := filepath.Join(dataDir, "app.db")
+	dataDir := os.Getenv("DATA_DIR")
+	if dataDir == "" {
+		dataDir = "data"
+	}
+
+	dbPath := os.Getenv("DB_PATH")
+	if dbPath == "" {
+		dbPath = filepath.Join(dataDir, "app.db")
+	}
 
 	db, err := dbpkg.Open(dbPath)
 	if err != nil {
