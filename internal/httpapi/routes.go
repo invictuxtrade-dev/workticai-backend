@@ -29,6 +29,9 @@ func (s *Server) routes() {
 	// Público para tracking de landings
 	r.HandleFunc("/api/public/funnel/event", s.handleTrackFunnelEvent).Methods("POST", "OPTIONS")
 
+	// Público para visualizar landings compartibles
+	r.HandleFunc("/l/{id}", s.handlePublicLanding).Methods("GET", "OPTIONS")
+
 	// Assets públicos de Social IA
 	r.PathPrefix("/social-assets/").Handler(
 		http.StripPrefix(
@@ -2393,4 +2396,60 @@ func (s *Server) handleListFacebookGroupLogs(w http.ResponseWriter, r *http.Requ
 	}
 
 	writeJSON(w, http.StatusOK, items)
+}
+
+func (s *Server) handlePublicLanding(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+
+	var html string
+	var previewHTML string
+	var status string
+
+	err := s.DB.QueryRow(`
+		SELECT html, preview_html, status
+		FROM landing_pages
+		WHERE id=?
+	`, id).Scan(&html, &previewHTML, &status)
+
+	if err != nil {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`
+			<!doctype html>
+			<html>
+			<head>
+				<meta charset="utf-8">
+				<meta name="viewport" content="width=device-width, initial-scale=1">
+				<title>Landing no encontrada</title>
+				<style>
+					body{font-family:Arial,sans-serif;background:#0f172a;color:white;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center}
+					.card{max-width:520px;padding:32px;background:#111827;border-radius:20px}
+				</style>
+			</head>
+			<body>
+				<div class="card">
+					<h1>Landing no encontrada</h1>
+					<p>Esta landing no existe o ya no está disponible.</p>
+				</div>
+			</body>
+			</html>
+		`))
+		return
+	}
+
+	page := strings.TrimSpace(html)
+	if page == "" {
+		page = strings.TrimSpace(previewHTML)
+	}
+
+	if page == "" {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte("<h1>Landing vacía</h1>"))
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(page))
 }
