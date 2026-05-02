@@ -81,8 +81,8 @@ func (s *GroupService) CreateGroupBot(in GroupBot) (GroupBot, error) {
 	`,
 		in.ID, in.ClientID, in.Name, in.Platform, in.Status, in.SystemPrompt,
 		in.BusinessName, in.BusinessDesc, in.Offer, in.TargetAudience,
-		in.Rules, in.WelcomeMessage, boolToInt(in.ModerationEnabled),
-		boolToInt(in.AutoReplyEnabled), boolToInt(in.LeadCapture),
+		in.Rules, in.WelcomeMessage, groupBoolToInt(in.ModerationEnabled),
+		groupBoolToInt(in.AutoReplyEnabled), groupBoolToInt(in.LeadCapture),
 		in.HandoffPhone, in.CreatedAt, in.UpdatedAt,
 	)
 
@@ -157,9 +157,9 @@ func (s *GroupService) UpdateGroupBot(id string, in GroupBot) error {
 		in.TargetAudience,
 		in.Rules,
 		in.WelcomeMessage,
-		boolToInt(in.ModerationEnabled),
-		boolToInt(in.AutoReplyEnabled),
-		boolToInt(in.LeadCapture),
+		groupBoolToInt(in.ModerationEnabled),
+		groupBoolToInt(in.AutoReplyEnabled),
+		groupBoolToInt(in.LeadCapture),
 		in.HandoffPhone,
 		time.Now(),
 		id,
@@ -276,7 +276,7 @@ func (s *GroupService) DeleteFacebookGroupTarget(id string) error {
 	return err
 }
 
-func boolToInt(v bool) int {
+func groupBoolToInt(v bool) int {
 	if v {
 		return 1
 	}
