@@ -118,6 +118,16 @@ func (s *Server) routes() {
 	secured.HandleFunc("/ads/ecosystem", s.handleCreateAdsEcosystem).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/ads/campaigns", s.handleCreateAdsCampaign).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/ads/campaigns/{id}/status", s.handleUpdateAdsCampaignStatus).Methods("PATCH", "OPTIONS")
+
+	secured.HandleFunc("/groups/whatsapp-bots", s.handleListGroupBots).Methods("GET", "OPTIONS")
+	secured.HandleFunc("/groups/whatsapp-bots", s.handleCreateGroupBot).Methods("POST", "OPTIONS")
+	secured.HandleFunc("/groups/whatsapp-bots/{id}", s.handleUpdateGroupBot).Methods("PUT", "OPTIONS")
+	secured.HandleFunc("/groups/whatsapp-bots/{id}", s.handleDeleteGroupBot).Methods("DELETE", "OPTIONS")
+
+	secured.HandleFunc("/groups/facebook-targets", s.handleListFacebookGroupTargets).Methods("GET", "OPTIONS")
+	secured.HandleFunc("/groups/facebook-targets", s.handleCreateFacebookGroupTarget).Methods("POST", "OPTIONS")
+	secured.HandleFunc("/groups/facebook-targets/{id}", s.handleUpdateFacebookGroupTarget).Methods("PUT", "OPTIONS")
+	secured.HandleFunc("/groups/facebook-targets/{id}", s.handleDeleteFacebookGroupTarget).Methods("DELETE", "OPTIONS")
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
@@ -2094,4 +2104,136 @@ func buildAdsLandingPrompt(plan services.AdsCampaignPlan) string {
 	b.WriteString("La landing debe ser profesional, persuasiva, responsive y orientada a conversión.\n")
 
 	return b.String()
+}
+
+func (s *Server) handleListGroupBots(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	clientID := r.URL.Query().Get("client_id")
+	if u.Role != "admin" {
+		clientID = u.ClientID
+	}
+
+	items, err := s.Groups.ListGroupBots(clientID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, items)
+}
+
+func (s *Server) handleCreateGroupBot(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+
+	var body services.GroupBot
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+
+	if u.Role != "admin" {
+		body.ClientID = u.ClientID
+	}
+
+	item, err := s.Groups.CreateGroupBot(body)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, item)
+}
+
+func (s *Server) handleUpdateGroupBot(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+
+	var body services.GroupBot
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+
+	if err := s.Groups.UpdateGroupBot(id, body); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"success": true})
+}
+
+func (s *Server) handleDeleteGroupBot(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+
+	if err := s.Groups.DeleteGroupBot(id); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"success": true})
+}
+
+func (s *Server) handleListFacebookGroupTargets(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	clientID := r.URL.Query().Get("client_id")
+	if u.Role != "admin" {
+		clientID = u.ClientID
+	}
+
+	items, err := s.Groups.ListFacebookGroupTargets(clientID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, items)
+}
+
+func (s *Server) handleCreateFacebookGroupTarget(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+
+	var body services.FacebookGroupTarget
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+
+	if u.Role != "admin" {
+		body.ClientID = u.ClientID
+	}
+
+	item, err := s.Groups.SaveFacebookGroupTarget(body)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, item)
+}
+
+func (s *Server) handleUpdateFacebookGroupTarget(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+
+	var body services.FacebookGroupTarget
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+
+	if err := s.Groups.UpdateFacebookGroupTarget(id, body); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"success": true})
+}
+
+func (s *Server) handleDeleteFacebookGroupTarget(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+
+	if err := s.Groups.DeleteFacebookGroupTarget(id); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"success": true})
 }

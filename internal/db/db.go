@@ -368,6 +368,44 @@ func migrate(db *sql.DB) error {
 		created_at TIMESTAMP NOT NULL
 	);`,
 
+	`CREATE TABLE IF NOT EXISTS group_bots (
+	id TEXT PRIMARY KEY,
+	client_id TEXT NOT NULL,
+	name TEXT NOT NULL,
+	platform TEXT NOT NULL DEFAULT 'whatsapp',
+	status TEXT NOT NULL DEFAULT 'draft',
+	system_prompt TEXT NOT NULL DEFAULT '',
+	business_name TEXT NOT NULL DEFAULT '',
+	business_description TEXT NOT NULL DEFAULT '',
+	offer TEXT NOT NULL DEFAULT '',
+	target_audience TEXT NOT NULL DEFAULT '',
+	rules TEXT NOT NULL DEFAULT '',
+	welcome_message TEXT NOT NULL DEFAULT '',
+	moderation_enabled INTEGER NOT NULL DEFAULT 1,
+	auto_reply_enabled INTEGER NOT NULL DEFAULT 1,
+	lead_capture_enabled INTEGER NOT NULL DEFAULT 1,
+	human_handoff_phone TEXT NOT NULL DEFAULT '',
+	created_at TIMESTAMP NOT NULL,
+	updated_at TIMESTAMP NOT NULL
+);`,
+
+	`CREATE TABLE IF NOT EXISTS facebook_group_targets (
+		id TEXT PRIMARY KEY,
+		client_id TEXT NOT NULL,
+		name TEXT NOT NULL,
+		url TEXT NOT NULL,
+		category TEXT NOT NULL DEFAULT '',
+		niche TEXT NOT NULL DEFAULT '',
+		members_count INTEGER NOT NULL DEFAULT 0,
+		relevance_score INTEGER NOT NULL DEFAULT 0,
+		status TEXT NOT NULL DEFAULT 'discovered',
+		join_status TEXT NOT NULL DEFAULT 'pending_manual_join',
+		rules_summary TEXT NOT NULL DEFAULT '',
+		notes TEXT NOT NULL DEFAULT '',
+		created_at TIMESTAMP NOT NULL,
+		updated_at TIMESTAMP NOT NULL
+	);`,
+
 		`CREATE TABLE IF NOT EXISTS ads_campaigns (
 		id TEXT PRIMARY KEY,
 		client_id TEXT NOT NULL,

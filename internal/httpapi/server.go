@@ -24,6 +24,7 @@ type Server struct {
 	Social    *services.SocialService
 	Billing   *services.BillingService
 	Ads       *services.AdsService
+	Groups 	  *services.GroupService
 }
 
 func New(
@@ -35,6 +36,7 @@ func New(
 	social *services.SocialService,
 	billing *services.BillingService,
 	ads *services.AdsService,
+	groups *services.GroupService,
 ) *Server {
 	s := &Server{
 		DB:        db,
@@ -46,6 +48,7 @@ func New(
 		Social:    social,
 		Billing:   billing,
 		Ads:       ads,
+		Groups:    groups,
 	}
 	s.routes()
 	return s
@@ -92,8 +95,9 @@ func NewServer() (*Server, error) {
 	_ = billing.SeedDefaults()
 
 	ads := services.NewAdsService(db, ai)
+	groups := services.NewGroupService(db, ai)
 
-	return New(db, manager, auth, templates, funnel, social, billing, ads), nil
+	return New(db, manager, auth, templates, funnel, social, billing, ads, groups), nil
 }
 
 func (s *Server) ListenAndServe(addr string) error {
