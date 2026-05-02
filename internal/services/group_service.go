@@ -1,7 +1,9 @@
 package services
 
 import (
+	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -24,6 +26,7 @@ type GroupBot struct {
 	Name              string    `json:"name"`
 	Platform          string    `json:"platform"`
 	Status            string    `json:"status"`
+	GroupJID          string    `json:"group_jid"`
 	SystemPrompt      string    `json:"system_prompt"`
 	BusinessName      string    `json:"business_name"`
 	BusinessDesc      string    `json:"business_description"`
@@ -56,6 +59,22 @@ type FacebookGroupTarget struct {
 	UpdatedAt      time.Time `json:"updated_at"`
 }
 
+type FacebookGroupDiscoveryRequest struct {
+	Product        string `json:"product"`
+	BusinessName   string `json:"business_name"`
+	Offer          string `json:"offer"`
+	TargetAudience string `json:"target_audience"`
+	Country         string `json:"country"`
+	Niche           string `json:"niche"`
+}
+
+type FacebookGroupDiscoveryResult struct {
+	SearchKeywords []string              `json:"search_keywords"`
+	Strategy       string                `json:"strategy"`
+	Warnings       []string              `json:"warnings"`
+	Groups         []FacebookGroupTarget `json:"groups"`
+}
+
 func (s *GroupService) CreateGroupBot(in GroupBot) (GroupBot, error) {
 	if strings.TrimSpace(in.ClientID) == "" {
 		return GroupBot{}, fmt.Errorf("client_id required")
@@ -67,19 +86,21 @@ func (s *GroupService) CreateGroupBot(in GroupBot) (GroupBot, error) {
 	now := time.Now()
 	in.ID = uuid.NewString()
 	in.Platform = "whatsapp"
-	in.Status = "draft"
+	if strings.TrimSpace(in.Status) == "" {
+		in.Status = "draft"
+	}
 	in.CreatedAt = now
 	in.UpdatedAt = now
 
 	_, err := s.DB.Exec(`
 		INSERT INTO group_bots (
-			id, client_id, name, platform, status, system_prompt,
+			id, client_id, name, platform, status, group_jid, system_prompt,
 			business_name, business_description, offer, target_audience,
 			rules, welcome_message, moderation_enabled, auto_reply_enabled,
 			lead_capture_enabled, human_handoff_phone, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
-		in.ID, in.ClientID, in.Name, in.Platform, in.Status, in.SystemPrompt,
+		in.ID, in.ClientID, in.Name, in.Platform, in.Status, in.GroupJID, in.SystemPrompt,
 		in.BusinessName, in.BusinessDesc, in.Offer, in.TargetAudience,
 		in.Rules, in.WelcomeMessage, groupBoolToInt(in.ModerationEnabled),
 		groupBoolToInt(in.AutoReplyEnabled), groupBoolToInt(in.LeadCapture),
@@ -91,7 +112,7 @@ func (s *GroupService) CreateGroupBot(in GroupBot) (GroupBot, error) {
 
 func (s *GroupService) ListGroupBots(clientID string) ([]GroupBot, error) {
 	rows, err := s.DB.Query(`
-		SELECT id, client_id, name, platform, status, system_prompt,
+		SELECT id, client_id, name, platform, status, group_jid, system_prompt,
 		       business_name, business_description, offer, target_audience,
 		       rules, welcome_message, moderation_enabled, auto_reply_enabled,
 		       lead_capture_enabled, human_handoff_phone, created_at, updated_at
@@ -109,7 +130,7 @@ func (s *GroupService) ListGroupBots(clientID string) ([]GroupBot, error) {
 		var x GroupBot
 		var moderation, autoReply, leadCapture int
 		if err := rows.Scan(
-			&x.ID, &x.ClientID, &x.Name, &x.Platform, &x.Status, &x.SystemPrompt,
+			&x.ID, &x.ClientID, &x.Name, &x.Platform, &x.Status, &x.GroupJID, &x.SystemPrompt,
 			&x.BusinessName, &x.BusinessDesc, &x.Offer, &x.TargetAudience,
 			&x.Rules, &x.WelcomeMessage, &moderation, &autoReply, &leadCapture,
 			&x.HandoffPhone, &x.CreatedAt, &x.UpdatedAt,
@@ -129,11 +150,15 @@ func (s *GroupService) UpdateGroupBot(id string, in GroupBot) error {
 	if strings.TrimSpace(id) == "" {
 		return fmt.Errorf("id required")
 	}
+	if strings.TrimSpace(in.Status) == "" {
+		in.Status = "draft"
+	}
 
 	_, err := s.DB.Exec(`
 		UPDATE group_bots SET
 			name=?,
 			status=?,
+			group_jid=?,
 			system_prompt=?,
 			business_name=?,
 			business_description=?,
@@ -150,6 +175,7 @@ func (s *GroupService) UpdateGroupBot(id string, in GroupBot) error {
 	`,
 		in.Name,
 		in.Status,
+		in.GroupJID,
 		in.SystemPrompt,
 		in.BusinessName,
 		in.BusinessDesc,
@@ -179,9 +205,6 @@ func (s *GroupService) SaveFacebookGroupTarget(in FacebookGroupTarget) (Facebook
 	if strings.TrimSpace(in.Name) == "" {
 		return FacebookGroupTarget{}, fmt.Errorf("name required")
 	}
-	if strings.TrimSpace(in.URL) == "" {
-		return FacebookGroupTarget{}, fmt.Errorf("url required")
-	}
 
 	now := time.Now()
 	in.ID = uuid.NewString()
@@ -190,6 +213,9 @@ func (s *GroupService) SaveFacebookGroupTarget(in FacebookGroupTarget) (Facebook
 	}
 	if in.JoinStatus == "" {
 		in.JoinStatus = "pending_manual_join"
+	}
+	if in.RelevanceScore <= 0 {
+		in.RelevanceScore = 70
 	}
 	in.CreatedAt = now
 	in.UpdatedAt = now
@@ -274,6 +300,105 @@ func (s *GroupService) UpdateFacebookGroupTarget(id string, in FacebookGroupTarg
 func (s *GroupService) DeleteFacebookGroupTarget(id string) error {
 	_, err := s.DB.Exec(`DELETE FROM facebook_group_targets WHERE id=?`, id)
 	return err
+}
+
+func (s *GroupService) DiscoverFacebookGroups(ctx context.Context, req FacebookGroupDiscoveryRequest, clientID string) (FacebookGroupDiscoveryResult, error) {
+	if s.AI == nil {
+		return FacebookGroupDiscoveryResult{}, fmt.Errorf("ai service not configured")
+	}
+
+	product := strings.TrimSpace(req.Product)
+	if product == "" {
+		return FacebookGroupDiscoveryResult{}, fmt.Errorf("product required")
+	}
+
+	country := strings.TrimSpace(req.Country)
+	if country == "" {
+		country = "Latinoamérica"
+	}
+
+	system := `Eres un estratega experto en crecimiento orgánico, Facebook Groups y captación ética de clientes.
+Debes recomendar grupos objetivo para una campaña, SIN sugerir spam, bots de auto-join ni violar reglas de Meta.
+Devuelve SOLO JSON válido.`
+
+	user := fmt.Sprintf(`
+Producto/servicio: %s
+Negocio: %s
+Oferta: %s
+Público objetivo: %s
+País/mercado: %s
+Nicho: %s
+
+Devuelve JSON con esta estructura exacta:
+{
+  "search_keywords": ["keyword 1", "keyword 2"],
+  "strategy": "estrategia segura para entrar y aportar valor",
+  "warnings": ["advertencia 1"],
+  "groups": [
+    {
+      "name": "Nombre sugerido o tipo de grupo",
+      "url": "",
+      "category": "Categoría",
+      "niche": "Nicho",
+      "members_count": 0,
+      "relevance_score": 85,
+      "status": "discovered",
+      "join_status": "pending_manual_join",
+      "rules_summary": "Qué revisar antes de publicar",
+      "notes": "Por qué este grupo es relevante"
+    }
+  ]
+}
+
+IMPORTANTE:
+- No inventes URLs reales.
+- Recomienda tipos de grupos y búsquedas.
+- El usuario debe unirse manualmente.
+- Nada de spam ni automatización agresiva.
+`, product, req.BusinessName, req.Offer, req.TargetAudience, country, req.Niche)
+
+	answer, err := s.AI.doHeavyCompletion(
+		ctx,
+		"",
+		0.5,
+		2200,
+		[]map[string]string{
+			{"role": "system", "content": system},
+			{"role": "user", "content": user},
+		},
+	)
+	if err != nil {
+		return FacebookGroupDiscoveryResult{}, err
+	}
+
+	answer = cleanCodeBlock(answer)
+
+	var out FacebookGroupDiscoveryResult
+	if err := json.Unmarshal([]byte(answer), &out); err != nil {
+		return FacebookGroupDiscoveryResult{}, fmt.Errorf("facebook groups ai parse: %w", err)
+	}
+
+	for i := range out.Groups {
+		out.Groups[i].ClientID = clientID
+		if strings.TrimSpace(out.Groups[i].Status) == "" {
+			out.Groups[i].Status = "discovered"
+		}
+		if strings.TrimSpace(out.Groups[i].JoinStatus) == "" {
+			out.Groups[i].JoinStatus = "pending_manual_join"
+		}
+		if out.Groups[i].RelevanceScore <= 0 {
+			out.Groups[i].RelevanceScore = 70
+		}
+	}
+
+	if len(out.Warnings) == 0 {
+		out.Warnings = []string{
+			"No se recomienda auto-unirse ni publicar automáticamente sin aprobación del usuario.",
+			"Revisar reglas de cada grupo antes de publicar.",
+		}
+	}
+
+	return out, nil
 }
 
 func groupBoolToInt(v bool) int {

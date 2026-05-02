@@ -128,6 +128,7 @@ func (s *Server) routes() {
 	secured.HandleFunc("/groups/facebook-targets", s.handleCreateFacebookGroupTarget).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/groups/facebook-targets/{id}", s.handleUpdateFacebookGroupTarget).Methods("PUT", "OPTIONS")
 	secured.HandleFunc("/groups/facebook-targets/{id}", s.handleDeleteFacebookGroupTarget).Methods("DELETE", "OPTIONS")
+	secured.HandleFunc("/groups/facebook-discover", s.handleDiscoverFacebookGroups).Methods("POST", "OPTIONS")
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
@@ -2236,4 +2237,30 @@ func (s *Server) handleDeleteFacebookGroupTarget(w http.ResponseWriter, r *http.
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"success": true})
+}
+
+func (s *Server) handleDiscoverFacebookGroups(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+
+	var body services.FacebookGroupDiscoveryRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+
+	clientID := u.ClientID
+	if u.Role == "admin" {
+		clientID = r.URL.Query().Get("client_id")
+		if clientID == "" {
+			clientID = u.ClientID
+		}
+	}
+
+	out, err := s.Groups.DiscoverFacebookGroups(r.Context(), body, clientID)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, out)
 }

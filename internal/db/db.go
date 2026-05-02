@@ -78,6 +78,7 @@ func Open(path string) (*sql.DB, error) {
 	`ALTER TABLE ads_campaigns ADD COLUMN auto_bot_enabled INTEGER DEFAULT 1`,
 	`ALTER TABLE ads_campaigns ADD COLUMN auto_landing_enabled INTEGER DEFAULT 1`,
 	`ALTER TABLE ads_campaigns ADD COLUMN auto_creatives_enabled INTEGER DEFAULT 1`,
+	`ALTER TABLE group_bots ADD COLUMN group_jid TEXT DEFAULT ''`,
 }
 
 	for _, q := range softMigrations {
@@ -385,6 +386,7 @@ func migrate(db *sql.DB) error {
 	auto_reply_enabled INTEGER NOT NULL DEFAULT 1,
 	lead_capture_enabled INTEGER NOT NULL DEFAULT 1,
 	human_handoff_phone TEXT NOT NULL DEFAULT '',
+	group_jid TEXT NOT NULL DEFAULT '',
 	created_at TIMESTAMP NOT NULL,
 	updated_at TIMESTAMP NOT NULL
 );`,
