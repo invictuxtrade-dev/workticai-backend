@@ -141,6 +141,10 @@ func (s *Server) routes() {
 	secured.HandleFunc("/groups/facebook-targets/{id}/mark-joined", s.handleMarkFacebookGroupJoined).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/groups/facebook-join-queue/{id}/status", s.handleUpdateFacebookJoinQueueStatus).Methods("PATCH", "OPTIONS")
 	secured.HandleFunc("/groups/facebook-logs", s.handleListFacebookGroupLogs).Methods("GET", "OPTIONS")
+
+	secured.HandleFunc("/assistant/messages", s.handleAssistantMessages).Methods("GET", "OPTIONS")
+	secured.HandleFunc("/assistant/messages", s.handleClearAssistantMessages).Methods("DELETE", "OPTIONS")
+	secured.HandleFunc("/assistant/chat", s.handleAssistantChat).Methods("POST", "OPTIONS")
 	}
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
@@ -2452,4 +2456,73 @@ func (s *Server) handlePublicLanding(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(page))
+}
+
+func (s *Server) assistantClientID(r *http.Request) string {
+	u := currentUser(r)
+
+	clientID := strings.TrimSpace(r.URL.Query().Get("client_id"))
+	if clientID != "" {
+		return clientID
+	}
+
+	if strings.TrimSpace(u.ClientID) != "" {
+		return u.ClientID
+	}
+
+	return ""
+}
+
+func (s *Server) handleAssistantMessages(w http.ResponseWriter, r *http.Request) {
+	clientID := s.assistantClientID(r)
+	if clientID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "Selecciona un cliente primero"})
+		return
+	}
+
+	items, err := s.Assistant.ListMessages(clientID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, items)
+}
+
+func (s *Server) handleClearAssistantMessages(w http.ResponseWriter, r *http.Request) {
+	clientID := s.assistantClientID(r)
+	if clientID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "Selecciona un cliente primero"})
+		return
+	}
+
+	if err := s.Assistant.ClearMessages(clientID); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"success": true})
+}
+
+func (s *Server) handleAssistantChat(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	clientID := s.assistantClientID(r)
+	if clientID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "Selecciona un cliente primero"})
+		return
+	}
+
+	var body services.AssistantChatRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+
+	msg, err := s.Assistant.Chat(r.Context(), clientID, u.Name, body.Message)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, msg)
 }

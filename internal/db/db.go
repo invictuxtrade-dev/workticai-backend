@@ -467,6 +467,16 @@ func migrate(db *sql.DB) error {
 		updated_at TIMESTAMP NOT NULL
 		);`,
 
+		`CREATE TABLE IF NOT EXISTS assistant_messages (
+			id TEXT PRIMARY KEY,
+			client_id TEXT NOT NULL,
+			role TEXT NOT NULL,
+			content TEXT NOT NULL,
+			created_at TIMESTAMP NOT NULL
+		);`,
+
+		`CREATE INDEX IF NOT EXISTS idx_assistant_messages_client_id ON assistant_messages(client_id);`,
+
 		`CREATE INDEX IF NOT EXISTS idx_social_jobs_status_run_at ON social_jobs(status, run_at);`,
 		`CREATE INDEX IF NOT EXISTS idx_social_logs_client_id ON social_logs(client_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_social_posts_campaign_id ON social_posts(campaign_id);`,
