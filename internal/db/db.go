@@ -79,6 +79,10 @@ func Open(path string) (*sql.DB, error) {
 	`ALTER TABLE ads_campaigns ADD COLUMN auto_landing_enabled INTEGER DEFAULT 1`,
 	`ALTER TABLE ads_campaigns ADD COLUMN auto_creatives_enabled INTEGER DEFAULT 1`,
 	`ALTER TABLE group_bots ADD COLUMN group_jid TEXT DEFAULT ''`,
+	// facebook groups growth
+	`ALTER TABLE facebook_group_targets ADD COLUMN auto_join_enabled INTEGER DEFAULT 0`,
+	`ALTER TABLE facebook_group_targets ADD COLUMN last_join_attempt TIMESTAMP NULL`,
+	`ALTER TABLE facebook_group_targets ADD COLUMN joined_at TIMESTAMP NULL`,
 }
 
 	for _, q := range softMigrations {
@@ -406,6 +410,45 @@ func migrate(db *sql.DB) error {
 		notes TEXT NOT NULL DEFAULT '',
 		created_at TIMESTAMP NOT NULL,
 		updated_at TIMESTAMP NOT NULL
+	);`,
+
+		`CREATE TABLE IF NOT EXISTS group_growth_settings (
+		id TEXT PRIMARY KEY,
+		client_id TEXT NOT NULL UNIQUE,
+		auto_join_enabled INTEGER NOT NULL DEFAULT 0,
+		safe_mode INTEGER NOT NULL DEFAULT 1,
+		max_joins_per_day INTEGER NOT NULL DEFAULT 2,
+		max_total_groups INTEGER NOT NULL DEFAULT 50,
+		min_delay_minutes INTEGER NOT NULL DEFAULT 120,
+		max_delay_minutes INTEGER NOT NULL DEFAULT 360,
+		allowed_hours TEXT NOT NULL DEFAULT '08:00-20:00',
+		timezone TEXT NOT NULL DEFAULT 'America/Bogota',
+		created_at TIMESTAMP NOT NULL,
+		updated_at TIMESTAMP NOT NULL
+	);`,
+
+	`CREATE TABLE IF NOT EXISTS facebook_group_join_queue (
+		id TEXT PRIMARY KEY,
+		client_id TEXT NOT NULL,
+		group_target_id TEXT NOT NULL,
+		status TEXT NOT NULL DEFAULT 'pending',
+		scheduled_for TIMESTAMP NULL,
+		executed_at TIMESTAMP NULL,
+		attempts INTEGER NOT NULL DEFAULT 0,
+		last_error TEXT NOT NULL DEFAULT '',
+		notes TEXT NOT NULL DEFAULT '',
+		created_at TIMESTAMP NOT NULL,
+		updated_at TIMESTAMP NOT NULL
+	);`,
+
+	`CREATE TABLE IF NOT EXISTS facebook_group_activity_logs (
+		id TEXT PRIMARY KEY,
+		client_id TEXT NOT NULL,
+		group_target_id TEXT NOT NULL,
+		action_type TEXT NOT NULL,
+		status TEXT NOT NULL DEFAULT '',
+		message TEXT NOT NULL DEFAULT '',
+		created_at TIMESTAMP NOT NULL
 	);`,
 
 		`CREATE TABLE IF NOT EXISTS ads_campaigns (

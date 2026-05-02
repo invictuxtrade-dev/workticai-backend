@@ -129,7 +129,16 @@ func (s *Server) routes() {
 	secured.HandleFunc("/groups/facebook-targets/{id}", s.handleUpdateFacebookGroupTarget).Methods("PUT", "OPTIONS")
 	secured.HandleFunc("/groups/facebook-targets/{id}", s.handleDeleteFacebookGroupTarget).Methods("DELETE", "OPTIONS")
 	secured.HandleFunc("/groups/facebook-discover", s.handleDiscoverFacebookGroups).Methods("POST", "OPTIONS")
-}
+
+	secured.HandleFunc("/groups/growth-settings", s.handleGetGroupGrowthSettings).Methods("GET", "OPTIONS")
+	secured.HandleFunc("/groups/growth-settings", s.handleSaveGroupGrowthSettings).Methods("PUT", "OPTIONS")
+
+	secured.HandleFunc("/groups/facebook-join-queue", s.handleListFacebookJoinQueue).Methods("GET", "OPTIONS")
+	secured.HandleFunc("/groups/facebook-targets/{id}/request-join", s.handleRequestFacebookGroupJoin).Methods("POST", "OPTIONS")
+	secured.HandleFunc("/groups/facebook-targets/{id}/mark-joined", s.handleMarkFacebookGroupJoined).Methods("POST", "OPTIONS")
+	secured.HandleFunc("/groups/facebook-join-queue/{id}/status", s.handleUpdateFacebookJoinQueueStatus).Methods("PATCH", "OPTIONS")
+	secured.HandleFunc("/groups/facebook-logs", s.handleListFacebookGroupLogs).Methods("GET", "OPTIONS")
+	}
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -2263,4 +2272,125 @@ func (s *Server) handleDiscoverFacebookGroups(w http.ResponseWriter, r *http.Req
 	}
 
 	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) groupClientID(r *http.Request) string {
+	u := currentUser(r)
+	clientID := u.ClientID
+
+	if u.Role == "admin" && r.URL.Query().Get("client_id") != "" {
+		clientID = r.URL.Query().Get("client_id")
+	}
+
+	return clientID
+}
+
+func (s *Server) handleGetGroupGrowthSettings(w http.ResponseWriter, r *http.Request) {
+	clientID := s.groupClientID(r)
+
+	settings, err := s.Groups.GetGrowthSettings(clientID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, settings)
+}
+
+func (s *Server) handleSaveGroupGrowthSettings(w http.ResponseWriter, r *http.Request) {
+	clientID := s.groupClientID(r)
+
+	var body services.GroupGrowthSettings
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+
+	body.ClientID = clientID
+
+	settings, err := s.Groups.SaveGrowthSettings(body)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, settings)
+}
+
+func (s *Server) handleListFacebookJoinQueue(w http.ResponseWriter, r *http.Request) {
+	clientID := s.groupClientID(r)
+
+	items, err := s.Groups.ListJoinQueue(clientID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, items)
+}
+
+func (s *Server) handleRequestFacebookGroupJoin(w http.ResponseWriter, r *http.Request) {
+	clientID := s.groupClientID(r)
+	groupID := mux.Vars(r)["id"]
+
+	var body struct {
+		Mode string `json:"mode"` // manual | auto
+	}
+
+	_ = json.NewDecoder(r.Body).Decode(&body)
+
+	item, err := s.Groups.RequestFacebookGroupJoin(clientID, groupID, body.Mode)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, item)
+}
+
+func (s *Server) handleMarkFacebookGroupJoined(w http.ResponseWriter, r *http.Request) {
+	clientID := s.groupClientID(r)
+	groupID := mux.Vars(r)["id"]
+
+	if err := s.Groups.MarkFacebookGroupJoined(clientID, groupID); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"success": true})
+}
+
+func (s *Server) handleUpdateFacebookJoinQueueStatus(w http.ResponseWriter, r *http.Request) {
+	clientID := s.groupClientID(r)
+	queueID := mux.Vars(r)["id"]
+
+	var body struct {
+		Status  string `json:"status"`
+		Message string `json:"message"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+
+	if err := s.Groups.UpdateJoinQueueStatus(clientID, queueID, body.Status, body.Message); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"success": true})
+}
+
+func (s *Server) handleListFacebookGroupLogs(w http.ResponseWriter, r *http.Request) {
+	clientID := s.groupClientID(r)
+	groupID := r.URL.Query().Get("group_target_id")
+
+	items, err := s.Groups.ListFacebookGroupLogs(clientID, groupID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, items)
 }

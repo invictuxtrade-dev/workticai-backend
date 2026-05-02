@@ -75,6 +75,47 @@ type FacebookGroupDiscoveryResult struct {
 	Groups         []FacebookGroupTarget `json:"groups"`
 }
 
+type GroupGrowthSettings struct {
+	ID               string    `json:"id"`
+	ClientID         string    `json:"client_id"`
+	AutoJoinEnabled bool      `json:"auto_join_enabled"`
+	SafeMode         bool      `json:"safe_mode"`
+	MaxJoinsPerDay   int       `json:"max_joins_per_day"`
+	MaxTotalGroups   int       `json:"max_total_groups"`
+	MinDelayMinutes  int       `json:"min_delay_minutes"`
+	MaxDelayMinutes  int       `json:"max_delay_minutes"`
+	AllowedHours     string    `json:"allowed_hours"`
+	Timezone         string    `json:"timezone"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
+type FacebookGroupJoinQueueItem struct {
+	ID            string     `json:"id"`
+	ClientID      string     `json:"client_id"`
+	GroupTargetID string     `json:"group_target_id"`
+	GroupName     string     `json:"group_name,omitempty"`
+	GroupURL      string     `json:"group_url,omitempty"`
+	Status        string     `json:"status"`
+	ScheduledFor  *time.Time `json:"scheduled_for,omitempty"`
+	ExecutedAt    *time.Time `json:"executed_at,omitempty"`
+	Attempts      int        `json:"attempts"`
+	LastError     string     `json:"last_error"`
+	Notes         string     `json:"notes"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+}
+
+type FacebookGroupActivityLog struct {
+	ID            string    `json:"id"`
+	ClientID      string    `json:"client_id"`
+	GroupTargetID string    `json:"group_target_id"`
+	ActionType    string    `json:"action_type"`
+	Status        string    `json:"status"`
+	Message       string    `json:"message"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
 func (s *GroupService) CreateGroupBot(in GroupBot) (GroupBot, error) {
 	if strings.TrimSpace(in.ClientID) == "" {
 		return GroupBot{}, fmt.Errorf("client_id required")
@@ -396,6 +437,422 @@ IMPORTANTE:
 			"No se recomienda auto-unirse ni publicar automáticamente sin aprobación del usuario.",
 			"Revisar reglas de cada grupo antes de publicar.",
 		}
+	}
+
+	return out, nil
+}
+
+func (s *GroupService) GetGrowthSettings(clientID string) (GroupGrowthSettings, error) {
+	if strings.TrimSpace(clientID) == "" {
+		return GroupGrowthSettings{}, fmt.Errorf("client_id required")
+	}
+
+	var out GroupGrowthSettings
+	var autoJoin, safeMode int
+
+	err := s.DB.QueryRow(`
+		SELECT id, client_id, auto_join_enabled, safe_mode, max_joins_per_day,
+		       max_total_groups, min_delay_minutes, max_delay_minutes,
+		       allowed_hours, timezone, created_at, updated_at
+		FROM group_growth_settings
+		WHERE client_id=?
+	`, clientID).Scan(
+		&out.ID,
+		&out.ClientID,
+		&autoJoin,
+		&safeMode,
+		&out.MaxJoinsPerDay,
+		&out.MaxTotalGroups,
+		&out.MinDelayMinutes,
+		&out.MaxDelayMinutes,
+		&out.AllowedHours,
+		&out.Timezone,
+		&out.CreatedAt,
+		&out.UpdatedAt,
+	)
+
+	if err == nil {
+		out.AutoJoinEnabled = autoJoin == 1
+		out.SafeMode = safeMode == 1
+		return out, nil
+	}
+
+	if err != sql.ErrNoRows {
+		return GroupGrowthSettings{}, err
+	}
+
+	now := time.Now()
+	out = GroupGrowthSettings{
+		ID:               uuid.NewString(),
+		ClientID:         clientID,
+		AutoJoinEnabled:  false,
+		SafeMode:         true,
+		MaxJoinsPerDay:   2,
+		MaxTotalGroups:   50,
+		MinDelayMinutes:  120,
+		MaxDelayMinutes:  360,
+		AllowedHours:     "08:00-20:00",
+		Timezone:         "America/Bogota",
+		CreatedAt:        now,
+		UpdatedAt:        now,
+	}
+
+	_, err = s.DB.Exec(`
+		INSERT INTO group_growth_settings (
+			id, client_id, auto_join_enabled, safe_mode,
+			max_joins_per_day, max_total_groups,
+			min_delay_minutes, max_delay_minutes,
+			allowed_hours, timezone, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		out.ID,
+		out.ClientID,
+		groupBoolToInt(out.AutoJoinEnabled),
+		groupBoolToInt(out.SafeMode),
+		out.MaxJoinsPerDay,
+		out.MaxTotalGroups,
+		out.MinDelayMinutes,
+		out.MaxDelayMinutes,
+		out.AllowedHours,
+		out.Timezone,
+		out.CreatedAt,
+		out.UpdatedAt,
+	)
+
+	return out, err
+}
+
+func (s *GroupService) SaveGrowthSettings(in GroupGrowthSettings) (GroupGrowthSettings, error) {
+	if strings.TrimSpace(in.ClientID) == "" {
+		return GroupGrowthSettings{}, fmt.Errorf("client_id required")
+	}
+
+	if in.MaxJoinsPerDay < 1 {
+		in.MaxJoinsPerDay = 1
+	}
+	if in.SafeMode && in.MaxJoinsPerDay > 2 {
+		in.MaxJoinsPerDay = 2
+	}
+	if in.MaxTotalGroups < 1 {
+		in.MaxTotalGroups = 50
+	}
+	if in.MinDelayMinutes < 60 {
+		in.MinDelayMinutes = 120
+	}
+	if in.MaxDelayMinutes < in.MinDelayMinutes {
+		in.MaxDelayMinutes = in.MinDelayMinutes + 120
+	}
+	if strings.TrimSpace(in.AllowedHours) == "" {
+		in.AllowedHours = "08:00-20:00"
+	}
+	if strings.TrimSpace(in.Timezone) == "" {
+		in.Timezone = "America/Bogota"
+	}
+
+	existing, _ := s.GetGrowthSettings(in.ClientID)
+	now := time.Now()
+
+	if existing.ID == "" {
+		in.ID = uuid.NewString()
+		in.CreatedAt = now
+	} else {
+		in.ID = existing.ID
+		in.CreatedAt = existing.CreatedAt
+	}
+	in.UpdatedAt = now
+
+	_, err := s.DB.Exec(`
+		INSERT INTO group_growth_settings (
+			id, client_id, auto_join_enabled, safe_mode,
+			max_joins_per_day, max_total_groups,
+			min_delay_minutes, max_delay_minutes,
+			allowed_hours, timezone, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(client_id) DO UPDATE SET
+			auto_join_enabled=excluded.auto_join_enabled,
+			safe_mode=excluded.safe_mode,
+			max_joins_per_day=excluded.max_joins_per_day,
+			max_total_groups=excluded.max_total_groups,
+			min_delay_minutes=excluded.min_delay_minutes,
+			max_delay_minutes=excluded.max_delay_minutes,
+			allowed_hours=excluded.allowed_hours,
+			timezone=excluded.timezone,
+			updated_at=excluded.updated_at
+	`,
+		in.ID,
+		in.ClientID,
+		groupBoolToInt(in.AutoJoinEnabled),
+		groupBoolToInt(in.SafeMode),
+		in.MaxJoinsPerDay,
+		in.MaxTotalGroups,
+		in.MinDelayMinutes,
+		in.MaxDelayMinutes,
+		in.AllowedHours,
+		in.Timezone,
+		in.CreatedAt,
+		in.UpdatedAt,
+	)
+
+	return in, err
+}
+
+func (s *GroupService) RequestFacebookGroupJoin(clientID, groupTargetID, mode string) (FacebookGroupJoinQueueItem, error) {
+	if strings.TrimSpace(clientID) == "" {
+		return FacebookGroupJoinQueueItem{}, fmt.Errorf("client_id required")
+	}
+	if strings.TrimSpace(groupTargetID) == "" {
+		return FacebookGroupJoinQueueItem{}, fmt.Errorf("group_target_id required")
+	}
+
+	var exists int
+	if err := s.DB.QueryRow(`
+		SELECT COUNT(*) FROM facebook_group_targets
+		WHERE id=? AND client_id=?
+	`, groupTargetID, clientID).Scan(&exists); err != nil {
+		return FacebookGroupJoinQueueItem{}, err
+	}
+	if exists == 0 {
+		return FacebookGroupJoinQueueItem{}, fmt.Errorf("group target not found")
+	}
+
+	settings, err := s.GetGrowthSettings(clientID)
+	if err != nil {
+		return FacebookGroupJoinQueueItem{}, err
+	}
+
+	var joinedCount int
+	_ = s.DB.QueryRow(`
+		SELECT COUNT(*) FROM facebook_group_targets
+		WHERE client_id=? AND join_status='joined'
+	`, clientID).Scan(&joinedCount)
+
+	if joinedCount >= settings.MaxTotalGroups {
+		return FacebookGroupJoinQueueItem{}, fmt.Errorf("max total groups reached")
+	}
+
+	var todayCount int
+	_ = s.DB.QueryRow(`
+		SELECT COUNT(*) FROM facebook_group_join_queue
+		WHERE client_id=?
+		  AND date(created_at)=date('now')
+		  AND status IN ('scheduled','manual_required','joined','processing')
+	`, clientID).Scan(&todayCount)
+
+	if todayCount >= settings.MaxJoinsPerDay {
+		return FacebookGroupJoinQueueItem{}, fmt.Errorf("daily join limit reached")
+	}
+
+	now := time.Now()
+	item := FacebookGroupJoinQueueItem{
+		ID:            uuid.NewString(),
+		ClientID:      clientID,
+		GroupTargetID: groupTargetID,
+		Status:        "manual_required",
+		Attempts:      0,
+		Notes:         "Abre el grupo, solicita unirte manualmente y luego marca como unido.",
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+
+	if strings.ToLower(strings.TrimSpace(mode)) == "auto" && settings.AutoJoinEnabled {
+		scheduled := now.Add(time.Duration(settings.MinDelayMinutes) * time.Minute)
+		item.Status = "scheduled"
+		item.ScheduledFor = &scheduled
+		item.Notes = "Programado en modo seguro. Requiere ejecución supervisada/manual."
+	}
+
+	_, err = s.DB.Exec(`
+		INSERT INTO facebook_group_join_queue (
+			id, client_id, group_target_id, status, scheduled_for,
+			attempts, last_error, notes, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		item.ID,
+		item.ClientID,
+		item.GroupTargetID,
+		item.Status,
+		item.ScheduledFor,
+		item.Attempts,
+		item.LastError,
+		item.Notes,
+		item.CreatedAt,
+		item.UpdatedAt,
+	)
+	if err != nil {
+		return FacebookGroupJoinQueueItem{}, err
+	}
+
+	_, _ = s.DB.Exec(`
+		UPDATE facebook_group_targets
+		SET join_status=?, status='queued', last_join_attempt=?, updated_at=?
+		WHERE id=? AND client_id=?
+	`,
+		item.Status,
+		now,
+		now,
+		groupTargetID,
+		clientID,
+	)
+
+	_ = s.CreateFacebookGroupLog(clientID, groupTargetID, "join_requested", item.Status, item.Notes)
+
+	return item, nil
+}
+
+func (s *GroupService) ListJoinQueue(clientID string) ([]FacebookGroupJoinQueueItem, error) {
+	rows, err := s.DB.Query(`
+		SELECT q.id, q.client_id, q.group_target_id,
+		       COALESCE(t.name, ''), COALESCE(t.url, ''),
+		       q.status, q.scheduled_for, q.executed_at,
+		       q.attempts, q.last_error, q.notes,
+		       q.created_at, q.updated_at
+		FROM facebook_group_join_queue q
+		LEFT JOIN facebook_group_targets t ON t.id=q.group_target_id
+		WHERE (?='' OR q.client_id=?)
+		ORDER BY q.created_at DESC
+	`, clientID, clientID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []FacebookGroupJoinQueueItem{}
+	for rows.Next() {
+		var x FacebookGroupJoinQueueItem
+		if err := rows.Scan(
+			&x.ID,
+			&x.ClientID,
+			&x.GroupTargetID,
+			&x.GroupName,
+			&x.GroupURL,
+			&x.Status,
+			&x.ScheduledFor,
+			&x.ExecutedAt,
+			&x.Attempts,
+			&x.LastError,
+			&x.Notes,
+			&x.CreatedAt,
+			&x.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, x)
+	}
+
+	return out, nil
+}
+
+func (s *GroupService) MarkFacebookGroupJoined(clientID, groupTargetID string) error {
+	now := time.Now()
+
+	_, err := s.DB.Exec(`
+		UPDATE facebook_group_targets
+		SET join_status='joined', status='joined', joined_at=?, updated_at=?
+		WHERE id=? AND client_id=?
+	`, now, now, groupTargetID, clientID)
+	if err != nil {
+		return err
+	}
+
+	_, _ = s.DB.Exec(`
+		UPDATE facebook_group_join_queue
+		SET status='joined', executed_at=?, updated_at=?
+		WHERE group_target_id=? AND client_id=?
+	`, now, now, groupTargetID, clientID)
+
+	_ = s.CreateFacebookGroupLog(clientID, groupTargetID, "joined_confirmed", "joined", "Usuario confirmó que ya está unido al grupo.")
+
+	return nil
+}
+
+func (s *GroupService) UpdateJoinQueueStatus(clientID, queueID, status, message string) error {
+	if strings.TrimSpace(status) == "" {
+		return fmt.Errorf("status required")
+	}
+
+	now := time.Now()
+
+	_, err := s.DB.Exec(`
+		UPDATE facebook_group_join_queue
+		SET status=?, last_error=?, updated_at=?
+		WHERE id=? AND client_id=?
+	`, status, message, now, queueID, clientID)
+	if err != nil {
+		return err
+	}
+
+	var groupTargetID string
+	_ = s.DB.QueryRow(`
+		SELECT group_target_id FROM facebook_group_join_queue
+		WHERE id=? AND client_id=?
+	`, queueID, clientID).Scan(&groupTargetID)
+
+	if groupTargetID != "" {
+		_, _ = s.DB.Exec(`
+			UPDATE facebook_group_targets
+			SET join_status=?, updated_at=?
+			WHERE id=? AND client_id=?
+		`, status, now, groupTargetID, clientID)
+
+		_ = s.CreateFacebookGroupLog(clientID, groupTargetID, "queue_status_updated", status, message)
+	}
+
+	return nil
+}
+
+func (s *GroupService) CreateFacebookGroupLog(clientID, groupTargetID, actionType, status, message string) error {
+	_, err := s.DB.Exec(`
+		INSERT INTO facebook_group_activity_logs (
+			id, client_id, group_target_id, action_type, status, message, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?)
+	`,
+		uuid.NewString(),
+		clientID,
+		groupTargetID,
+		actionType,
+		status,
+		message,
+		time.Now(),
+	)
+	return err
+}
+
+func (s *GroupService) ListFacebookGroupLogs(clientID, groupTargetID string) ([]FacebookGroupActivityLog, error) {
+	query := `
+		SELECT id, client_id, group_target_id, action_type, status, message, created_at
+		FROM facebook_group_activity_logs
+		WHERE (?='' OR client_id=?)
+	`
+	args := []any{clientID, clientID}
+
+	if strings.TrimSpace(groupTargetID) != "" {
+		query += ` AND group_target_id=?`
+		args = append(args, groupTargetID)
+	}
+
+	query += ` ORDER BY created_at DESC LIMIT 100`
+
+	rows, err := s.DB.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []FacebookGroupActivityLog{}
+	for rows.Next() {
+		var x FacebookGroupActivityLog
+		if err := rows.Scan(
+			&x.ID,
+			&x.ClientID,
+			&x.GroupTargetID,
+			&x.ActionType,
+			&x.Status,
+			&x.Message,
+			&x.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, x)
 	}
 
 	return out, nil
