@@ -346,30 +346,37 @@ func (s *SocialService) SaveCredential(c models.SocialCredential) (models.Social
 	c.UpdatedAt = now
 
 	_, err := s.DB.Exec(`
-		INSERT INTO social_credentials (
-			id, client_id, platform, access_token, page_id, page_name, enabled, ad_account_id, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			client_id=excluded.client_id,
-			platform=excluded.platform,
-			access_token=excluded.access_token,
-			page_id=excluded.page_id,
-			page_name=excluded.page_name,
-			enabled=excluded.enabled,
-			ad_account_id=excluded.ad_account_id,
-			updated_at=excluded.updated_at
-	`,
-		c.ID,
-		c.ClientID,
-		c.Platform,
-		c.AccessToken,
-		c.PageID,
-		c.PageName,
-		c.Enabled,
-		c.AdAccountID,
-		c.CreatedAt,
-		c.UpdatedAt,
-	)
+	INSERT INTO social_credentials (
+		id, client_id, platform, access_token, page_id, page_name,
+		enabled, ad_account_id,
+		instagram_account_id, instagram_username,
+		created_at, updated_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	ON CONFLICT(id) DO UPDATE SET
+		client_id=excluded.client_id,
+		platform=excluded.platform,
+		access_token=excluded.access_token,
+		page_id=excluded.page_id,
+		page_name=excluded.page_name,
+		enabled=excluded.enabled,
+		ad_account_id=excluded.ad_account_id,
+		instagram_account_id=excluded.instagram_account_id,
+		instagram_username=excluded.instagram_username,
+		updated_at=excluded.updated_at
+`,
+	c.ID,
+	c.ClientID,
+	c.Platform,
+	c.AccessToken,
+	c.PageID,
+	c.PageName,
+	c.Enabled,
+	c.AdAccountID,
+	c.InstagramAccountID,
+	c.InstagramUsername,
+	c.CreatedAt,
+	c.UpdatedAt,
+)
 
 	return c, err
 }
@@ -378,7 +385,11 @@ func (s *SocialService) GetCredentialByClient(clientID string) (*models.SocialCr
 	var c models.SocialCredential
 
 	err := s.DB.QueryRow(`
-		SELECT id, client_id, platform, access_token, page_id, page_name, enabled, ad_account_id, created_at, updated_at
+		SELECT 
+			id, client_id, platform, access_token, page_id, page_name,
+			enabled, ad_account_id,
+			instagram_account_id, instagram_username,
+			created_at, updated_at
 		FROM social_credentials
 		WHERE client_id=? AND platform='facebook' AND enabled=1
 		LIMIT 1
@@ -391,12 +402,14 @@ func (s *SocialService) GetCredentialByClient(clientID string) (*models.SocialCr
 		&c.PageName,
 		&c.Enabled,
 		&c.AdAccountID,
+		&c.InstagramAccountID,
+		&c.InstagramUsername,
 		&c.CreatedAt,
 		&c.UpdatedAt,
 	)
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("credenciales no encontradas")
 	}
 
 	return &c, nil
