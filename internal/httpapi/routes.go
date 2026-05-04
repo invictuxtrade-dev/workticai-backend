@@ -2598,31 +2598,3 @@ func (s *Server) handleVerifyInstagram(w http.ResponseWriter, r *http.Request) {
 		"instagram_username": igUser,
 	})
 }
-
-func (s *Server) handleGetSocialCredentials(w http.ResponseWriter, r *http.Request) {
-	clientID := r.URL.Query().Get("client_id")
-	if clientID == "" {
-		writeJSON(w, 400, map[string]string{"error": "client_id requerido"})
-		return
-	}
-
-	cred, err := s.Social.GetCredentialByClient(clientID)
-	if err != nil {
-		writeJSON(w, 404, map[string]string{"error": "credenciales no encontradas"})
-		return
-	}
-
-	// 🔥 AQUÍ ESTÁ LA MAGIA
-	igID, igUser, _ := s.Social.GetInstagramFromPage(cred.AccessToken, cred.PageID)
-
-	resp := map[string]interface{}{
-		"page_id": cred.PageID,
-		"page_name": cred.PageName,
-		"access_token": cred.AccessToken,
-		"instagram_connected": igID != "",
-		"instagram_id": igID,
-		"instagram_username": igUser,
-	}
-
-	writeJSON(w, 200, resp)
-}
