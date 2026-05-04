@@ -5,9 +5,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"net/http" 
+	"io"
+	"net/http"
+	"net/url"
 	"strings"
 	"time"
+
 	"github.com/google/uuid"
 	"whatsapp-sales-os-enterprise/backend/internal/models"
 )
@@ -28,16 +31,14 @@ func NewSocialService(db *sql.DB, ai *AIService, assetsDir, baseURL string) *Soc
 	}
 }
 
-// ================= GENERAR CONTENIDO =================
-
 func (s *SocialService) GenerateContent(ctx context.Context, campaign models.SocialCampaign) (string, error) {
 	prompt := strings.TrimSpace(campaign.Prompt)
 	if prompt == "" {
-		prompt = "Genera una publicación profesional para Facebook."
+		prompt = "Genera una publicación profesional para Facebook e Instagram."
 	}
 
 	system := fmt.Sprintf(`
-Eres experto en marketing digital y copywriting para Facebook.
+Eres experto en marketing digital y copywriting para Facebook e Instagram.
 
 Objetivo: %s
 CTA: %s
@@ -59,8 +60,6 @@ Reglas:
 	return s.AI.GenerateHTML(ctx, system+"\n\n"+prompt, "")
 }
 
-// ================= GENERAR IMAGEN =================
-
 func (s *SocialService) GenerateImage(ctx context.Context, imagePrompt string) (string, error) {
 	imagePrompt = strings.TrimSpace(imagePrompt)
 	if imagePrompt == "" {
@@ -68,8 +67,6 @@ func (s *SocialService) GenerateImage(ctx context.Context, imagePrompt string) (
 	}
 	return s.Image.GenerateImage(ctx, imagePrompt)
 }
-
-// ================= CREAR CAMPAÑA =================
 
 func (s *SocialService) CreateCampaign(c models.SocialCampaign) (models.SocialCampaign, error) {
 	now := time.Now()
@@ -121,8 +118,6 @@ func (s *SocialService) CreateCampaign(c models.SocialCampaign) (models.SocialCa
 
 	return c, err
 }
-
-// ================= CREAR POST =================
 
 func (s *SocialService) CreatePost(
 	clientID string,
@@ -196,23 +191,20 @@ func (s *SocialService) CreatePost(
 	return post, nil
 }
 
-// ================= RESOLVER LINK =================
-
 func (s *SocialService) ResolveTargetURL(clientID, objective, botID, landingID, manualLink string) string {
 	switch strings.TrimSpace(objective) {
 	case "manual_link":
 		return strings.TrimSpace(manualLink)
 
 	case "landing":
-		// Aquí luego podrás cambiarlo por public_url cuando la guardes en DB
-		var url string
+		var target string
 		_ = s.DB.QueryRow(`
 			SELECT whatsapp_url
 			FROM landing_pages
 			WHERE id=? AND client_id=?
 			LIMIT 1
-		`, landingID, clientID).Scan(&url)
-		return strings.TrimSpace(url)
+		`, landingID, clientID).Scan(&target)
+		return strings.TrimSpace(target)
 
 	case "whatsapp":
 		var phone string
@@ -234,20 +226,18 @@ func (s *SocialService) ResolveTargetURL(clientID, objective, botID, landingID, 
 	}
 }
 
-// ================= INSTAGRAM =================
-
 func (s *SocialService) GetInstagramFromPage(accessToken, pageID string) (string, string, error) {
-	if accessToken == "" || pageID == "" {
+	if strings.TrimSpace(accessToken) == "" || strings.TrimSpace(pageID) == "" {
 		return "", "", fmt.Errorf("token o page_id vacío")
 	}
 
-	url := fmt.Sprintf(
+	graphURL := fmt.Sprintf(
 		"https://graph.facebook.com/v19.0/%s?fields=instagram_business_account{id,username}&access_token=%s",
 		pageID,
-		accessToken,
+		url.QueryEscape(accessToken),
 	)
 
-	resp, err := http.Get(url)
+	resp, err := http.Get(graphURL)
 	if err != nil {
 		return "", "", err
 	}
@@ -258,16 +248,23 @@ func (s *SocialService) GetInstagramFromPage(accessToken, pageID string) (string
 			ID       string `json:"id"`
 			Username string `json:"username"`
 		} `json:"instagram_business_account"`
+		Error *struct {
+			Message string `json:"message"`
+			Type    string `json:"type"`
+			Code    int    `json:"code"`
+		} `json:"error"`
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
 		return "", "", err
 	}
 
+	if data.Error != nil {
+		return "", "", fmt.Errorf("Meta error: %s", data.Error.Message)
+	}
+
 	return data.Instagram.ID, data.Instagram.Username, nil
 }
-
-// ================= PUBLICAR =================
 
 func (s *SocialService) PublishNow(ctx context.Context, postID string) error {
 	var p models.SocialPost
@@ -300,10 +297,19 @@ func (s *SocialService) PublishNow(ctx context.Context, postID string) error {
 		return err
 	}
 
-	if p.Platform != "facebook" {
-		return fmt.Errorf("solo Facebook soportado")
-	}
+	platform := strings.ToLower(strings.TrimSpace(p.Platform))
 
+	switch platform {
+	case "facebook":
+		return s.publishFacebook(ctx, p)
+	case "instagram":
+		return s.publishInstagram(ctx, p)
+	default:
+		return fmt.Errorf("plataforma no soportada: %s", p.Platform)
+	}
+}
+
+func (s *SocialService) publishFacebook(ctx context.Context, p models.SocialPost) error {
 	postIDFB, err := s.Publisher.PublishFacebookPost(
 		ctx,
 		p.ClientID,
@@ -329,7 +335,150 @@ func (s *SocialService) PublishNow(ctx context.Context, postID string) error {
 	return nil
 }
 
-// ================= GUARDAR CREDENCIALES =================
+func (s *SocialService) publishInstagram(ctx context.Context, p models.SocialPost) error {
+	imageURL := strings.TrimSpace(p.ImageURL)
+	if imageURL == "" {
+		err := fmt.Errorf("Instagram requiere una imagen pública HTTPS")
+		_, _ = s.DB.Exec(`UPDATE social_posts SET status='error', error=? WHERE id=?`, err.Error(), p.ID)
+		s.Publisher.Log(p.ClientID, p.CampaignID, p.ID, "error", err.Error())
+		return err
+	}
+
+	if !strings.HasPrefix(imageURL, "https://") {
+		err := fmt.Errorf("la imagen para Instagram debe ser una URL pública HTTPS")
+		_, _ = s.DB.Exec(`UPDATE social_posts SET status='error', error=? WHERE id=?`, err.Error(), p.ID)
+		s.Publisher.Log(p.ClientID, p.CampaignID, p.ID, "error", err.Error())
+		return err
+	}
+
+	cred, err := s.GetCredentialByClient(p.ClientID)
+	if err != nil {
+		_, _ = s.DB.Exec(`UPDATE social_posts SET status='error', error=? WHERE id=?`, err.Error(), p.ID)
+		s.Publisher.Log(p.ClientID, p.CampaignID, p.ID, "error", err.Error())
+		return err
+	}
+
+	igID := strings.TrimSpace(cred.InstagramAccountID)
+	if igID == "" {
+		igID, _, err = s.GetInstagramFromPage(cred.AccessToken, cred.PageID)
+		if err != nil || igID == "" {
+			if err == nil {
+				err = fmt.Errorf("Instagram no conectado")
+			}
+			_, _ = s.DB.Exec(`UPDATE social_posts SET status='error', error=? WHERE id=?`, err.Error(), p.ID)
+			s.Publisher.Log(p.ClientID, p.CampaignID, p.ID, "error", err.Error())
+			return err
+		}
+	}
+
+	createForm := url.Values{}
+	createForm.Set("image_url", imageURL)
+	createForm.Set("caption", strings.TrimSpace(p.Content))
+	createForm.Set("access_token", cred.AccessToken)
+
+	createURL := fmt.Sprintf("https://graph.facebook.com/v19.0/%s/media", igID)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, createURL, strings.NewReader(createForm.Encode()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	raw, _ := io.ReadAll(resp.Body)
+
+	var container struct {
+		ID    string `json:"id"`
+		Error *struct {
+			Message string `json:"message"`
+			Type    string `json:"type"`
+			Code    int    `json:"code"`
+		} `json:"error"`
+	}
+
+	if err := json.Unmarshal(raw, &container); err != nil {
+		err = fmt.Errorf("respuesta inválida creando media IG: %s", string(raw))
+		_, _ = s.DB.Exec(`UPDATE social_posts SET status='error', error=? WHERE id=?`, err.Error(), p.ID)
+		s.Publisher.Log(p.ClientID, p.CampaignID, p.ID, "error", err.Error())
+		return err
+	}
+
+	if resp.StatusCode >= 300 || container.Error != nil || container.ID == "" {
+		msg := string(raw)
+		if container.Error != nil {
+			msg = container.Error.Message
+		}
+		err := fmt.Errorf("error creando media IG: %s", msg)
+		_, _ = s.DB.Exec(`UPDATE social_posts SET status='error', error=? WHERE id=?`, err.Error(), p.ID)
+		s.Publisher.Log(p.ClientID, p.CampaignID, p.ID, "error", err.Error())
+		return err
+	}
+
+	time.Sleep(3 * time.Second)
+
+	publishForm := url.Values{}
+	publishForm.Set("creation_id", container.ID)
+	publishForm.Set("access_token", cred.AccessToken)
+
+	publishURL := fmt.Sprintf("https://graph.facebook.com/v19.0/%s/media_publish", igID)
+
+	req2, err := http.NewRequestWithContext(ctx, http.MethodPost, publishURL, strings.NewReader(publishForm.Encode()))
+	if err != nil {
+		return err
+	}
+	req2.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp2, err := http.DefaultClient.Do(req2)
+	if err != nil {
+		return err
+	}
+	defer resp2.Body.Close()
+
+	raw2, _ := io.ReadAll(resp2.Body)
+
+	var published struct {
+		ID    string `json:"id"`
+		Error *struct {
+			Message string `json:"message"`
+			Type    string `json:"type"`
+			Code    int    `json:"code"`
+		} `json:"error"`
+	}
+
+	if err := json.Unmarshal(raw2, &published); err != nil {
+		err = fmt.Errorf("respuesta inválida publicando IG: %s", string(raw2))
+		_, _ = s.DB.Exec(`UPDATE social_posts SET status='error', error=? WHERE id=?`, err.Error(), p.ID)
+		s.Publisher.Log(p.ClientID, p.CampaignID, p.ID, "error", err.Error())
+		return err
+	}
+
+	if resp2.StatusCode >= 300 || published.Error != nil || published.ID == "" {
+		msg := string(raw2)
+		if published.Error != nil {
+			msg = published.Error.Message
+		}
+		err := fmt.Errorf("error publicando IG: %s", msg)
+		_, _ = s.DB.Exec(`UPDATE social_posts SET status='error', error=? WHERE id=?`, err.Error(), p.ID)
+		s.Publisher.Log(p.ClientID, p.CampaignID, p.ID, "error", err.Error())
+		return err
+	}
+
+	now := time.Now()
+
+	_, _ = s.DB.Exec(`
+		UPDATE social_posts
+		SET status='published', error='', facebook_post_id=?, published_at=?
+		WHERE id=?
+	`, published.ID, now, p.ID)
+
+	s.Publisher.Log(p.ClientID, p.CampaignID, p.ID, "info", "publicación enviada a Instagram: "+published.ID)
+	return nil
+}
 
 func (s *SocialService) SaveCredential(c models.SocialCredential) (models.SocialCredential, error) {
 	now := time.Now()
@@ -346,37 +495,37 @@ func (s *SocialService) SaveCredential(c models.SocialCredential) (models.Social
 	c.UpdatedAt = now
 
 	_, err := s.DB.Exec(`
-	INSERT INTO social_credentials (
-		id, client_id, platform, access_token, page_id, page_name,
-		enabled, ad_account_id,
-		instagram_account_id, instagram_username,
-		created_at, updated_at
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	ON CONFLICT(id) DO UPDATE SET
-		client_id=excluded.client_id,
-		platform=excluded.platform,
-		access_token=excluded.access_token,
-		page_id=excluded.page_id,
-		page_name=excluded.page_name,
-		enabled=excluded.enabled,
-		ad_account_id=excluded.ad_account_id,
-		instagram_account_id=excluded.instagram_account_id,
-		instagram_username=excluded.instagram_username,
-		updated_at=excluded.updated_at
-`,
-	c.ID,
-	c.ClientID,
-	c.Platform,
-	c.AccessToken,
-	c.PageID,
-	c.PageName,
-	c.Enabled,
-	c.AdAccountID,
-	c.InstagramAccountID,
-	c.InstagramUsername,
-	c.CreatedAt,
-	c.UpdatedAt,
-)
+		INSERT INTO social_credentials (
+			id, client_id, platform, access_token, page_id, page_name,
+			enabled, ad_account_id,
+			instagram_account_id, instagram_username,
+			created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			client_id=excluded.client_id,
+			platform=excluded.platform,
+			access_token=excluded.access_token,
+			page_id=excluded.page_id,
+			page_name=excluded.page_name,
+			enabled=excluded.enabled,
+			ad_account_id=excluded.ad_account_id,
+			instagram_account_id=excluded.instagram_account_id,
+			instagram_username=excluded.instagram_username,
+			updated_at=excluded.updated_at
+	`,
+		c.ID,
+		c.ClientID,
+		c.Platform,
+		c.AccessToken,
+		c.PageID,
+		c.PageName,
+		c.Enabled,
+		c.AdAccountID,
+		c.InstagramAccountID,
+		c.InstagramUsername,
+		c.CreatedAt,
+		c.UpdatedAt,
+	)
 
 	return c, err
 }
@@ -392,6 +541,7 @@ func (s *SocialService) GetCredentialByClient(clientID string) (*models.SocialCr
 			created_at, updated_at
 		FROM social_credentials
 		WHERE client_id=? AND platform='facebook' AND enabled=1
+		ORDER BY updated_at DESC
 		LIMIT 1
 	`, clientID).Scan(
 		&c.ID,
