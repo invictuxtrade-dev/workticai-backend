@@ -3,10 +3,11 @@ package services
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"net/http" 
 	"strings"
 	"time"
-
 	"github.com/google/uuid"
 	"whatsapp-sales-os-enterprise/backend/internal/models"
 )
@@ -231,6 +232,39 @@ func (s *SocialService) ResolveTargetURL(clientID, objective, botID, landingID, 
 	default:
 		return ""
 	}
+}
+
+// ================= INSTAGRAM =================
+
+func (s *SocialService) GetInstagramFromPage(accessToken, pageID string) (string, string, error) {
+	if accessToken == "" || pageID == "" {
+		return "", "", fmt.Errorf("token o page_id vacío")
+	}
+
+	url := fmt.Sprintf(
+		"https://graph.facebook.com/v19.0/%s?fields=instagram_business_account{id,username}&access_token=%s",
+		pageID,
+		accessToken,
+	)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+
+	var data struct {
+		Instagram struct {
+			ID       string `json:"id"`
+			Username string `json:"username"`
+		} `json:"instagram_business_account"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return "", "", err
+	}
+
+	return data.Instagram.ID, data.Instagram.Username, nil
 }
 
 // ================= PUBLICAR =================

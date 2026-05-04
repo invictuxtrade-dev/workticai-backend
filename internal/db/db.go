@@ -83,6 +83,9 @@ func Open(path string) (*sql.DB, error) {
 	`ALTER TABLE facebook_group_targets ADD COLUMN auto_join_enabled INTEGER DEFAULT 0`,
 	`ALTER TABLE facebook_group_targets ADD COLUMN last_join_attempt TIMESTAMP NULL`,
 	`ALTER TABLE facebook_group_targets ADD COLUMN joined_at TIMESTAMP NULL`,
+	`ALTER TABLE social_credentials ADD COLUMN instagram_account_id TEXT DEFAULT ''`,
+	`ALTER TABLE social_credentials ADD COLUMN instagram_username TEXT DEFAULT ''`,
+	`ALTER TABLE social_credentials ADD COLUMN instagram_connected INTEGER DEFAULT 0`,
 }
 
 	for _, q := range softMigrations {

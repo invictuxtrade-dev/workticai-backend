@@ -106,6 +106,7 @@ func (s *Server) routes() {
 	secured.HandleFunc("/social/logs", s.handleSocialLogs).Methods("GET", "OPTIONS")
 	secured.HandleFunc("/social/generate-image", s.handleSocialGenerateImage).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/social/upload-image", s.handleSocialUploadImage).Methods("POST", "OPTIONS")
+	secured.HandleFunc("/social/instagram/verify", s.handleVerifyInstagram).Methods("POST", "OPTIONS")
 
 	secured.HandleFunc("/plans", s.handlePlans).Methods("GET", "OPTIONS")
 	secured.HandleFunc("/billing/config", requireRole("admin")(s.handleGetBillingConfig)).Methods("GET", "OPTIONS")
@@ -2525,4 +2526,52 @@ func (s *Server) handleAssistantChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, msg)
+}
+
+func (s *Server) handleVerifyInstagram(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+
+	clientID := r.URL.Query().Get("client_id")
+	if clientID == "" {
+		clientID = u.ClientID
+	}
+
+	var cred models.SocialCredential
+	err := s.DB.QueryRow(`
+		SELECT id, access_token, page_id
+		FROM social_credentials
+		WHERE client_id=? AND platform='facebook'
+		LIMIT 1
+	`, clientID).Scan(&cred.ID, &cred.AccessToken, &cred.PageID)
+
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "No hay credenciales de Facebook"})
+		return
+	}
+
+	igID, igUser, err := s.Social.GetInstagramFromPage(cred.AccessToken, cred.PageID)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+
+	if igID == "" {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"connected": false,
+			"message": "No hay cuenta de Instagram conectada a esta página",
+		})
+		return
+	}
+
+	_, _ = s.DB.Exec(`
+		UPDATE social_credentials
+		SET instagram_account_id=?, instagram_username=?, instagram_connected=1
+		WHERE id=?
+	`, igID, igUser, cred.ID)
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"connected": true,
+		"instagram_account_id": igID,
+		"instagram_username": igUser,
+	})
 }

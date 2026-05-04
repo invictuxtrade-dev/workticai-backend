@@ -158,6 +158,9 @@ type SocialCredential struct {
 	AdAccountID string    `json:"ad_account_id"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
+	InstagramAccountID string `json:"instagram_account_id"`
+	InstagramUsername  string `json:"instagram_username"`
+	InstagramConnected bool   `json:"instagram_connected"`
 }
 
 type SocialCampaign struct {
