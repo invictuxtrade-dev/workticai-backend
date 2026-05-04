@@ -107,6 +107,8 @@ func (s *Server) routes() {
 	secured.HandleFunc("/social/generate-image", s.handleSocialGenerateImage).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/social/upload-image", s.handleSocialUploadImage).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/social/instagram/verify", s.handleVerifyInstagram).Methods("POST", "OPTIONS")
+	secured.HandleFunc("/social/instagram/data", s.handleInstagramData).Methods("GET", "OPTIONS")
+	secured.HandleFunc("/social/publish-multi", s.handlePublishMulti).Methods("POST", "OPTIONS")
 	
 
 	secured.HandleFunc("/plans", s.handlePlans).Methods("GET", "OPTIONS")
@@ -2597,4 +2599,123 @@ func (s *Server) handleVerifyInstagram(w http.ResponseWriter, r *http.Request) {
 		"instagram_account_id": igID,
 		"instagram_username": igUser,
 	})
+}
+
+func (s *Server) handleInstagramData(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+
+	cred, err := s.Social.GetCredentialByClient(u.ClientID)
+	if err != nil {
+		writeJSON(w, 400, map[string]any{"error": "credenciales no encontradas"})
+		return
+	}
+
+	igID, username, err := s.Social.GetInstagramFromPage(cred.AccessToken, cred.PageID)
+	if err != nil || igID == "" {
+		writeJSON(w, 400, map[string]any{"error": "Instagram no conectado"})
+		return
+	}
+
+	url := fmt.Sprintf(
+		"https://graph.facebook.com/v19.0/%s?fields=username,followers_count,media_count&access_token=%s",
+		igID,
+		cred.AccessToken,
+	)
+
+	resp, _ := http.Get(url)
+	defer resp.Body.Close()
+
+	var data map[string]any
+	json.NewDecoder(resp.Body).Decode(&data)
+
+	data["instagram_id"] = igID
+	data["instagram_username"] = username
+
+	writeJSON(w, 200, data)
+}
+
+func (s *Server) publishInstagram(accessToken, igID, imageURL, caption string) error {
+
+	// 1. Crear contenedor
+	createURL := fmt.Sprintf(
+		"https://graph.facebook.com/v19.0/%s/media?image_url=%s&caption=%s&access_token=%s",
+		igID,
+		url.QueryEscape(imageURL),
+		url.QueryEscape(caption),
+		accessToken,
+	)
+
+	resp, err := http.Post(createURL, "application/json", nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	var res map[string]any
+	json.NewDecoder(resp.Body).Decode(&res)
+
+	creationID := res["id"].(string)
+
+	// 2. Publicar
+	publishURL := fmt.Sprintf(
+		"https://graph.facebook.com/v19.0/%s/media_publish?creation_id=%s&access_token=%s",
+		igID,
+		creationID,
+		accessToken,
+	)
+
+	_, err = http.Post(publishURL, "application/json", nil)
+	return err
+}
+
+func (s *Server) handlePublishMulti(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+
+	var body struct {
+		Platforms []string `json:"platforms"`
+		Content   string   `json:"content"`
+		ImageURL  string   `json:"image_url"`
+	}
+
+	json.NewDecoder(r.Body).Decode(&body)
+
+	cred, err := s.Social.GetCredentialByClient(u.ClientID)
+	if err != nil {
+		writeJSON(w, 400, map[string]any{"error": "credenciales no encontradas"})
+		return
+	}
+
+	results := map[string]any{}
+
+	// FACEBOOK
+	for _, p := range body.Platforms {
+		if p == "facebook" {
+			_, err := s.Social.Publisher.PublishFacebookPost(
+				r.Context(),
+				u.ClientID,
+				body.Content,
+				body.ImageURL,
+				"",
+			)
+			results["facebook"] = err == nil
+		}
+	}
+
+	// INSTAGRAM
+	for _, p := range body.Platforms {
+		if p == "instagram" {
+			igID, _, _ := s.Social.GetInstagramFromPage(cred.AccessToken, cred.PageID)
+
+			err := s.publishInstagram(
+				cred.AccessToken,
+				igID,
+				body.ImageURL,
+				body.Content,
+			)
+
+			results["instagram"] = err == nil
+		}
+	}
+
+	writeJSON(w, 200, results)
 }
