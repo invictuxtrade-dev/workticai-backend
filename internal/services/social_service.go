@@ -373,3 +373,31 @@ func (s *SocialService) SaveCredential(c models.SocialCredential) (models.Social
 
 	return c, err
 }
+
+func (s *SocialService) GetCredentialByClient(clientID string) (*models.SocialCredential, error) {
+	var c models.SocialCredential
+
+	err := s.DB.QueryRow(`
+		SELECT id, client_id, platform, access_token, page_id, page_name, enabled, ad_account_id, created_at, updated_at
+		FROM social_credentials
+		WHERE client_id=? AND platform='facebook' AND enabled=1
+		LIMIT 1
+	`, clientID).Scan(
+		&c.ID,
+		&c.ClientID,
+		&c.Platform,
+		&c.AccessToken,
+		&c.PageID,
+		&c.PageName,
+		&c.Enabled,
+		&c.AdAccountID,
+		&c.CreatedAt,
+		&c.UpdatedAt,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &c, nil
+}

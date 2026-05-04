@@ -107,6 +107,7 @@ func (s *Server) routes() {
 	secured.HandleFunc("/social/generate-image", s.handleSocialGenerateImage).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/social/upload-image", s.handleSocialUploadImage).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/social/instagram/verify", s.handleVerifyInstagram).Methods("POST", "OPTIONS")
+	
 
 	secured.HandleFunc("/plans", s.handlePlans).Methods("GET", "OPTIONS")
 	secured.HandleFunc("/billing/config", requireRole("admin")(s.handleGetBillingConfig)).Methods("GET", "OPTIONS")
@@ -1145,6 +1146,7 @@ func (s *Server) handleSocialGenerate(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGetSocialCredentials(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
 	clientID := r.URL.Query().Get("client_id")
+
 	if u.Role != "admin" {
 		clientID = u.ClientID
 	}
@@ -1167,11 +1169,32 @@ func (s *Server) handleGetSocialCredentials(w http.ResponseWriter, r *http.Reque
 		&c.CreatedAt,
 		&c.UpdatedAt,
 	)
+
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]any{})
 		return
 	}
-	writeJSON(w, http.StatusOK, c)
+
+	// 🔥 AQUÍ VIENE LO QUE TE FALTABA
+	igID, igUser, _ := s.Social.GetInstagramFromPage(c.AccessToken, c.PageID)
+
+	resp := map[string]any{
+		"id": c.ID,
+		"client_id": c.ClientID,
+		"platform": c.Platform,
+		"access_token": c.AccessToken,
+		"page_id": c.PageID,
+		"page_name": c.PageName,
+		"enabled": c.Enabled,
+		"ad_account_id": c.AdAccountID,
+
+		// 🔥 ESTO ES LO CLAVE
+		"instagram_connected": igID != "",
+		"instagram_id": igID,
+		"instagram_username": igUser,
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleSaveSocialCredentials(w http.ResponseWriter, r *http.Request) {
@@ -2574,4 +2597,32 @@ func (s *Server) handleVerifyInstagram(w http.ResponseWriter, r *http.Request) {
 		"instagram_account_id": igID,
 		"instagram_username": igUser,
 	})
+}
+
+func (s *Server) handleGetSocialCredentials(w http.ResponseWriter, r *http.Request) {
+	clientID := r.URL.Query().Get("client_id")
+	if clientID == "" {
+		writeJSON(w, 400, map[string]string{"error": "client_id requerido"})
+		return
+	}
+
+	cred, err := s.Social.GetCredentialByClient(clientID)
+	if err != nil {
+		writeJSON(w, 404, map[string]string{"error": "credenciales no encontradas"})
+		return
+	}
+
+	// 🔥 AQUÍ ESTÁ LA MAGIA
+	igID, igUser, _ := s.Social.GetInstagramFromPage(cred.AccessToken, cred.PageID)
+
+	resp := map[string]interface{}{
+		"page_id": cred.PageID,
+		"page_name": cred.PageName,
+		"access_token": cred.AccessToken,
+		"instagram_connected": igID != "",
+		"instagram_id": igID,
+		"instagram_username": igUser,
+	}
+
+	writeJSON(w, 200, resp)
 }
