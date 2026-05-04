@@ -2606,7 +2606,17 @@ func (s *Server) handleVerifyInstagram(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleInstagramData(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
 
-	cred, err := s.Social.GetCredentialByClient(u.ClientID)
+	clientID := r.URL.Query().Get("client_id")
+	if u.Role != "admin" {
+		clientID = u.ClientID
+	}
+
+	if strings.TrimSpace(clientID) == "" {
+		writeJSON(w, 400, map[string]any{"error": "client_id requerido"})
+		return
+	}
+
+	cred, err := s.Social.GetCredentialByClient(clientID)
 	if err != nil {
 		writeJSON(w, 400, map[string]any{"error": "credenciales no encontradas"})
 		return
@@ -2618,17 +2628,24 @@ func (s *Server) handleInstagramData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	url := fmt.Sprintf(
+	graphURL := fmt.Sprintf(
 		"https://graph.facebook.com/v19.0/%s?fields=username,followers_count,media_count&access_token=%s",
 		igID,
 		cred.AccessToken,
 	)
 
-	resp, _ := http.Get(url)
+	resp, err := http.Get(graphURL)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
 	defer resp.Body.Close()
 
 	var data map[string]any
-	json.NewDecoder(resp.Body).Decode(&data)
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
 
 	data["instagram_id"] = igID
 	data["instagram_username"] = username
