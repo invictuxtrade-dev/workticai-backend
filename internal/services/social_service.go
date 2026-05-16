@@ -57,7 +57,11 @@ Reglas:
 - estilo comercial, humano y profesional
 `, campaign.Objective, campaign.CallToAction)
 
-	return s.AI.GenerateHTML(ctx, system+"\n\n"+prompt, "")
+	out, err := s.AI.GenerateHTML(ctx, system+"\n\n"+prompt, "")
+	if err != nil {
+		return "", err
+	}
+	return cleanSocialCaption(out), nil
 }
 
 func (s *SocialService) GenerateImage(ctx context.Context, imagePrompt string) (string, error) {
@@ -563,4 +567,59 @@ func (s *SocialService) GetCredentialByClient(clientID string) (*models.SocialCr
 	}
 
 	return &c, nil
+}
+
+func cleanSocialCaption(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+
+	if strings.Contains(strings.ToLower(s), "<html") || strings.Contains(strings.ToLower(s), "<!doctype") {
+		if i := strings.Index(strings.ToLower(s), "<body"); i >= 0 {
+			s = s[i:]
+		}
+	}
+
+	replacements := []struct {
+		old string
+		new string
+	}{
+		{"<!DOCTYPE html>", ""},
+		{"&nbsp;", " "},
+		{"&amp;", "&"},
+		{"&lt;", "<"},
+		{"&gt;", ">"},
+	}
+
+	for _, r := range replacements {
+		s = strings.ReplaceAll(s, r.old, r.new)
+	}
+
+	// Quitar etiquetas HTML simple
+	var b strings.Builder
+	inTag := false
+	for _, ch := range s {
+		if ch == '<' {
+			inTag = true
+			continue
+		}
+		if ch == '>' {
+			inTag = false
+			b.WriteRune('\n')
+			continue
+		}
+		if !inTag {
+			b.WriteRune(ch)
+		}
+	}
+
+	lines := strings.Split(b.String(), "\n")
+	clean := []string{}
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			clean = append(clean, line)
+		}
+	}
+
+	return strings.Join(clean, "\n")
 }
