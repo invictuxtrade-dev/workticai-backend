@@ -2690,51 +2690,66 @@ func (s *Server) publishInstagram(accessToken, igID, imageURL, caption string) e
 func (s *Server) handlePublishMulti(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
 
+	clientID := r.URL.Query().Get("client_id")
+	if u.Role != "admin" {
+		clientID = u.ClientID
+	}
+
+	if strings.TrimSpace(clientID) == "" {
+		writeJSON(w, 400, map[string]any{"error": "client_id requerido"})
+		return
+	}
+
 	var body struct {
 		Platforms []string `json:"platforms"`
 		Content   string   `json:"content"`
 		ImageURL  string   `json:"image_url"`
 	}
 
-	json.NewDecoder(r.Body).Decode(&body)
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, 400, map[string]any{"error": "invalid json"})
+		return
+	}
 
-	cred, err := s.Social.GetCredentialByClient(u.ClientID)
-	if err != nil {
-		writeJSON(w, 400, map[string]any{"error": "credenciales no encontradas"})
+	if len(body.Platforms) == 0 {
+		writeJSON(w, 400, map[string]any{"error": "selecciona al menos una plataforma"})
 		return
 	}
 
 	results := map[string]any{}
 
-	// FACEBOOK
-	for _, p := range body.Platforms {
-		if p == "facebook" {
-			_, err := s.Social.Publisher.PublishFacebookPost(
-				r.Context(),
-				u.ClientID,
-				body.Content,
-				body.ImageURL,
-				"",
-			)
-			results["facebook"] = err == nil
+	for _, platform := range body.Platforms {
+		platform = strings.ToLower(strings.TrimSpace(platform))
+
+		post, err := s.Social.CreatePost(
+			clientID,
+			"",
+			platform,
+			body.Content,
+			body.ImageURL,
+			"",
+			"now",
+			"manual",
+			"",
+			nil,
+		)
+
+		if err != nil {
+			results[platform] = map[string]any{"ok": false, "error": err.Error()}
+			continue
 		}
+
+		err = s.Social.PublishNow(r.Context(), post.ID)
+		if err != nil {
+			results[platform] = map[string]any{"ok": false, "error": err.Error()}
+			continue
+		}
+
+		results[platform] = map[string]any{"ok": true, "post_id": post.ID}
 	}
 
-	// INSTAGRAM
-	for _, p := range body.Platforms {
-		if p == "instagram" {
-			igID, _, _ := s.Social.GetInstagramFromPage(cred.AccessToken, cred.PageID)
-
-			err := s.publishInstagram(
-				cred.AccessToken,
-				igID,
-				body.ImageURL,
-				body.Content,
-			)
-
-			results["instagram"] = err == nil
-		}
-	}
-
-	writeJSON(w, 200, results)
+	writeJSON(w, 200, map[string]any{
+		"success": true,
+		"results": results,
+	})
 }
