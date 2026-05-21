@@ -111,6 +111,7 @@ func (s *Server) routes() {
 	secured.HandleFunc("/social/generate-video", s.handleGenerateAIVideo).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/social/videos", s.handleListAIVideos).Methods("GET", "OPTIONS")
 	secured.HandleFunc("/social/videos/{id}/refresh", s.handleRefreshAIVideo).Methods("POST", "OPTIONS")
+	secured.HandleFunc("/social/videos/{id}/download", s.handleDownloadAIVideo).Methods("GET", "OPTIONS")
 	secured.HandleFunc("/social/instagram/verify", s.handleVerifyInstagram).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/social/instagram/data", s.handleInstagramData).Methods("GET", "OPTIONS")
 	secured.HandleFunc("/social/publish-multi", s.handlePublishMulti).Methods("POST", "OPTIONS")
@@ -2828,4 +2829,31 @@ func (s *Server) handleRefreshAIVideo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, 200, job)
+}
+
+func (s *Server) handleDownloadAIVideo(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+
+	job, err := s.Video.GetJob(id)
+	if err != nil {
+		writeJSON(w, 404, map[string]any{"error": "video no encontrado"})
+		return
+	}
+
+	if strings.TrimSpace(job.VideoURL) == "" {
+		writeJSON(w, 400, map[string]any{"error": "video no disponible"})
+		return
+	}
+
+	resp, err := http.Get(job.VideoURL)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+
+	w.Header().Set("Content-Type", "video/mp4")
+	w.Header().Set("Content-Disposition", `attachment; filename="worktic-ai-video.mp4"`)
+
+	io.Copy(w, resp.Body)
 }
