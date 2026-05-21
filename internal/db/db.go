@@ -470,6 +470,24 @@ func migrate(db *sql.DB) error {
 		updated_at TIMESTAMP NOT NULL
 		);`,
 
+		`CREATE TABLE IF NOT EXISTS ai_video_jobs (
+			id TEXT PRIMARY KEY,
+			client_id TEXT NOT NULL,
+			prompt TEXT NOT NULL DEFAULT '',
+			image_url TEXT NOT NULL DEFAULT '',
+			video_url TEXT NOT NULL DEFAULT '',
+			provider TEXT NOT NULL DEFAULT '',
+			model TEXT NOT NULL DEFAULT '',
+			provider_job_id TEXT NOT NULL DEFAULT '',
+			provider_get_url TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT 'processing',
+			error TEXT NOT NULL DEFAULT '',
+			cost_credits INTEGER NOT NULL DEFAULT 0,
+			created_at TIMESTAMP NOT NULL,
+			updated_at TIMESTAMP NOT NULL,
+			completed_at TIMESTAMP NULL
+		);`,
+
 		`CREATE TABLE IF NOT EXISTS assistant_messages (
 			id TEXT PRIMARY KEY,
 			client_id TEXT NOT NULL,
@@ -497,6 +515,8 @@ func migrate(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_funnel_events_landing_id ON funnel_events(landing_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_funnel_events_event_type ON funnel_events(event_type);`,
 		`CREATE INDEX IF NOT EXISTS idx_funnel_events_created_at ON funnel_events(created_at);`,
+		`CREATE INDEX IF NOT EXISTS idx_ai_video_jobs_client_id ON ai_video_jobs(client_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_ai_video_jobs_status ON ai_video_jobs(status);`,
 	}
 
 	for _, q := range queries {

@@ -204,6 +204,24 @@ type SocialPost struct {
 	CreatedAt      time.Time  `json:"created_at"`
 }
 
+type AIVideoJob struct {
+	ID             string     `json:"id"`
+	ClientID       string     `json:"client_id"`
+	Prompt         string     `json:"prompt"`
+	ImageURL       string     `json:"image_url"`
+	VideoURL       string     `json:"video_url"`
+	Provider       string     `json:"provider"`
+	Model          string     `json:"model"`
+	ProviderJobID  string     `json:"provider_job_id"`
+	ProviderGetURL string     `json:"provider_get_url"`
+	Status         string     `json:"status"` // processing | completed | error
+	Error          string     `json:"error"`
+	CostCredits    int        `json:"cost_credits"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+	CompletedAt    *time.Time `json:"completed_at,omitempty"`
+}
+
 type SocialJob struct {
 	ID               string     `json:"id"`
 	ClientID         string     `json:"client_id"`

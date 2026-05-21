@@ -108,6 +108,9 @@ func (s *Server) routes() {
 	secured.HandleFunc("/social/logs", s.handleSocialLogs).Methods("GET", "OPTIONS")
 	secured.HandleFunc("/social/generate-image", s.handleSocialGenerateImage).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/social/upload-image", s.handleSocialUploadImage).Methods("POST", "OPTIONS")
+	secured.HandleFunc("/social/generate-video", s.handleGenerateAIVideo).Methods("POST", "OPTIONS")
+	secured.HandleFunc("/social/videos", s.handleListAIVideos).Methods("GET", "OPTIONS")
+	secured.HandleFunc("/social/videos/{id}/refresh", s.handleRefreshAIVideo).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/social/instagram/verify", s.handleVerifyInstagram).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/social/instagram/data", s.handleInstagramData).Methods("GET", "OPTIONS")
 	secured.HandleFunc("/social/publish-multi", s.handlePublishMulti).Methods("POST", "OPTIONS")
@@ -2752,4 +2755,77 @@ func (s *Server) handlePublishMulti(w http.ResponseWriter, r *http.Request) {
 		"success": true,
 		"results": results,
 	})
+}
+
+
+func (s *Server) handleGenerateAIVideo(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+
+	clientID := r.URL.Query().Get("client_id")
+	if u.Role != "admin" {
+		clientID = u.ClientID
+	}
+
+	if strings.TrimSpace(clientID) == "" {
+		writeJSON(w, 400, map[string]any{"error": "client_id requerido"})
+		return
+	}
+
+	var body struct {
+		Prompt   string `json:"prompt"`
+		ImageURL string `json:"image_url"`
+		Duration int    `json:"duration"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, 400, map[string]any{"error": "invalid json"})
+		return
+	}
+
+	if strings.TrimSpace(body.Prompt) == "" {
+		writeJSON(w, 400, map[string]any{"error": "prompt requerido"})
+		return
+	}
+
+	job, err := s.Video.CreateJob(r.Context(), clientID, body.Prompt, body.ImageURL, body.Duration)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, 201, job)
+}
+
+func (s *Server) handleListAIVideos(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+
+	clientID := r.URL.Query().Get("client_id")
+	if u.Role != "admin" {
+		clientID = u.ClientID
+	}
+
+	if strings.TrimSpace(clientID) == "" {
+		writeJSON(w, 400, map[string]any{"error": "client_id requerido"})
+		return
+	}
+
+	items, err := s.Video.ListJobs(clientID)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, 200, items)
+}
+
+func (s *Server) handleRefreshAIVideo(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+
+	job, err := s.Video.RefreshJob(r.Context(), id)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, 200, job)
 }
