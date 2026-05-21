@@ -113,6 +113,7 @@ func (s *Server) routes() {
 	secured.HandleFunc("/social/videos/{id}/refresh", s.handleRefreshAIVideo).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/social/videos/{id}/download", s.handleDownloadAIVideo).Methods("GET", "OPTIONS")
 	secured.HandleFunc("/social/videos/{id}/add-music", s.handleAddMusicAIVideo).Methods("POST", "OPTIONS")
+	secured.HandleFunc("/social/videos/{id}/voice-subtitles", s.handleVoiceSubtitlesAIVideo).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/social/instagram/verify", s.handleVerifyInstagram).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/social/instagram/data", s.handleInstagramData).Methods("GET", "OPTIONS")
 	secured.HandleFunc("/social/publish-multi", s.handlePublishMulti).Methods("POST", "OPTIONS")
@@ -2875,4 +2876,20 @@ func (s *Server) handleAddMusicAIVideo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, 200, job)
+}
+
+func (s *Server) handleVoiceSubtitlesAIVideo(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+
+	err := s.Video.AddVoiceAndSubtitles(id)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"success": true,
+	})
 }

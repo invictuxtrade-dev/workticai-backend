@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"encoding/base64"
 
 	"github.com/google/uuid"
 	"whatsapp-sales-os-enterprise/backend/internal/models"
@@ -508,4 +509,143 @@ func (v *VideoService) ListJobs(clientID string) ([]models.AIVideoJob, error) {
 	}
 
 	return out, nil
+}
+
+func (v *VideoService) generateVoice(text string) (string, error) {
+	apiKey := os.Getenv("OPENAI_API_KEY")
+	if strings.TrimSpace(apiKey) == "" {
+		return "", fmt.Errorf("OPENAI_API_KEY no configurada")
+	}
+
+	payload := map[string]any{
+		"model": "gpt-4o-mini-tts",
+		"voice": "alloy",
+		"input": text,
+	}
+
+	body, _ := json.Marshal(payload)
+
+	req, err := http.NewRequest(
+		http.MethodPost,
+		"https://api.openai.com/v1/audio/speech",
+		bytes.NewBuffer(body),
+	)
+	if err != nil {
+		return "", err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		raw, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("tts error: %s", string(raw))
+	}
+
+	filename := fmt.Sprintf("voice_%d.mp3", time.Now().UnixNano())
+	outPath := filepath.Join(videoAssetsDir(), filename)
+
+	out, err := os.Create(outPath)
+	if err != nil {
+		return "", err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	return outPath, nil
+}
+
+func createSRT(text string, duration int, path string) error {
+	content := fmt.Sprintf(`1
+00:00:00,000 --> 00:00:%02d,000
+%s
+`, duration, text)
+
+	return os.WriteFile(path, []byte(content), 0644)
+}
+
+func (v *VideoService) AddVoiceAndSubtitles(jobID string) error {
+	row := v.DB.QueryRow(`
+		SELECT video_url, prompt
+		FROM ai_video_jobs
+		WHERE id = ?
+	`, jobID)
+
+	var videoURL string
+	var prompt string
+
+	if err := row.Scan(&videoURL, &prompt); err != nil {
+		return err
+	}
+
+	if strings.TrimSpace(videoURL) == "" {
+		return fmt.Errorf("video vacío")
+	}
+
+	ctx := context.Background()
+
+	tmpInput := filepath.Join(os.TempDir(), jobID+"_input.mp4")
+
+	err := downloadFile(ctx, videoURL, tmpInput)
+	if err != nil {
+		return err
+	}
+
+	voicePath, err := v.generateVoice(prompt)
+	if err != nil {
+		return err
+	}
+
+	subPath := filepath.Join(os.TempDir(), jobID+".srt")
+
+	err = createSRT(prompt, 15, subPath)
+	if err != nil {
+		return err
+	}
+
+	outputName := fmt.Sprintf("video_voice_%d.mp4", time.Now().UnixNano())
+	outputPath := filepath.Join(videoAssetsDir(), outputName)
+
+	cmd := exec.Command(
+		"ffmpeg",
+		"-y",
+		"-i", tmpInput,
+		"-i", voicePath,
+		"-vf", fmt.Sprintf("subtitles=%s", subPath),
+		"-map", "0:v",
+		"-map", "1:a",
+		"-c:v", "libx264",
+		"-c:a", "aac",
+		"-shortest",
+		outputPath,
+	)
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("ffmpeg: %s", string(out))
+	}
+
+	finalURL := v.publicAssetURL(outputName)
+
+	_, err = v.DB.Exec(`
+		UPDATE ai_video_jobs
+		SET video_url = ?, updated_at = ?
+		WHERE id = ?
+	`,
+		finalURL,
+		time.Now(),
+		jobID,
+	)
+
+	return err
 }
