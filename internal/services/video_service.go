@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-	"encoding/base64"
 
 	"github.com/google/uuid"
 	"whatsapp-sales-os-enterprise/backend/internal/models"
