@@ -112,6 +112,7 @@ func (s *Server) routes() {
 	secured.HandleFunc("/social/videos", s.handleListAIVideos).Methods("GET", "OPTIONS")
 	secured.HandleFunc("/social/videos/{id}/refresh", s.handleRefreshAIVideo).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/social/videos/{id}/download", s.handleDownloadAIVideo).Methods("GET", "OPTIONS")
+	secured.HandleFunc("/social/videos/{id}/add-music", s.handleAddMusicAIVideo).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/social/instagram/verify", s.handleVerifyInstagram).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/social/instagram/data", s.handleInstagramData).Methods("GET", "OPTIONS")
 	secured.HandleFunc("/social/publish-multi", s.handlePublishMulti).Methods("POST", "OPTIONS")
@@ -2856,4 +2857,22 @@ func (s *Server) handleDownloadAIVideo(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", `attachment; filename="worktic-ai-video.mp4"`)
 
 	io.Copy(w, resp.Body)
+}
+
+func (s *Server) handleAddMusicAIVideo(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+
+	var body struct {
+		Category string `json:"category"`
+	}
+
+	_ = json.NewDecoder(r.Body).Decode(&body)
+
+	job, err := s.Video.AddMusicToJob(r.Context(), id, body.Category)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, 200, job)
 }

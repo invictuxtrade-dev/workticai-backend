@@ -7,8 +7,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -17,10 +20,10 @@ import (
 )
 
 type VideoService struct {
-	DB       *sql.DB
-	APIKey   string
-	Model    string
-	BaseURL  string
+	DB      *sql.DB
+	APIKey  string
+	Model   string
+	BaseURL string
 }
 
 func NewVideoService(db *sql.DB, baseURL string) *VideoService {
@@ -37,6 +40,137 @@ func NewVideoService(db *sql.DB, baseURL string) *VideoService {
 	}
 }
 
+func musicLibraryDir() string {
+	dir := os.Getenv("MUSIC_LIBRARY_DIR")
+	if strings.TrimSpace(dir) == "" {
+		dir = filepath.Join("data", "music")
+	}
+	return dir
+}
+
+func videoAssetsDir() string {
+	dir := os.Getenv("VIDEO_ASSETS_DIR")
+	if strings.TrimSpace(dir) == "" {
+		dir = filepath.Join("data", "social_assets")
+	}
+	return dir
+}
+
+func (v *VideoService) publicAssetURL(filename string) string {
+	rel := "/social-assets/" + filename
+	if strings.TrimSpace(v.BaseURL) != "" {
+		return strings.TrimRight(v.BaseURL, "/") + rel
+	}
+	return rel
+}
+
+func detectMusicCategory(text string) string {
+	t := strings.ToLower(text)
+
+	switch {
+	case strings.Contains(t, "trading"),
+		strings.Contains(t, "forex"),
+		strings.Contains(t, "crypto"),
+		strings.Contains(t, "copytrading"),
+		strings.Contains(t, "invers"):
+		return "trading"
+
+	case strings.Contains(t, "viral"),
+		strings.Contains(t, "tiktok"),
+		strings.Contains(t, "reel"),
+		strings.Contains(t, "short"):
+		return "viral"
+
+	case strings.Contains(t, "cinematic"),
+		strings.Contains(t, "cinematográfico"),
+		strings.Contains(t, "película"):
+		return "cinematic"
+
+	case strings.Contains(t, "luxury"),
+		strings.Contains(t, "lujo"),
+		strings.Contains(t, "premium"):
+		return "luxury"
+
+	case strings.Contains(t, "dark"),
+		strings.Contains(t, "oscuro"),
+		strings.Contains(t, "hacker"):
+		return "dark"
+
+	case strings.Contains(t, "tech"),
+		strings.Contains(t, "tecnología"),
+		strings.Contains(t, "ia"),
+		strings.Contains(t, "ai"),
+		strings.Contains(t, "automatización"):
+		return "tech"
+
+	case strings.Contains(t, "motivacional"),
+		strings.Contains(t, "éxito"),
+		strings.Contains(t, "crecimiento"):
+		return "motivational"
+
+	default:
+		return "corporate"
+	}
+}
+
+func pickRandomMusic(category string) (string, error) {
+	category = strings.TrimSpace(strings.ToLower(category))
+	if category == "" || category == "auto" {
+		category = "corporate"
+	}
+
+	dir := filepath.Join(musicLibraryDir(), category)
+
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		return "", fmt.Errorf("no se pudo leer carpeta de música %s: %w", dir, err)
+	}
+
+	candidates := []string{}
+	for _, f := range files {
+		if f.IsDir() {
+			continue
+		}
+
+		ext := strings.ToLower(filepath.Ext(f.Name()))
+		if ext == ".mp3" || ext == ".wav" || ext == ".m4a" {
+			candidates = append(candidates, filepath.Join(dir, f.Name()))
+		}
+	}
+
+	if len(candidates) == 0 {
+		return "", fmt.Errorf("no hay músicas en la categoría %s", category)
+	}
+
+	return candidates[rand.Intn(len(candidates))], nil
+}
+
+func downloadFile(ctx context.Context, fileURL, dst string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fileURL, nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("status %d", resp.StatusCode)
+	}
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, resp.Body)
+	return err
+}
+
 func (v *VideoService) CreateJob(ctx context.Context, clientID, prompt, imageURL string, duration int) (models.AIVideoJob, error) {
 	if strings.TrimSpace(v.APIKey) == "" {
 		return models.AIVideoJob{}, fmt.Errorf("REPLICATE_API_TOKEN no configurado")
@@ -48,21 +182,21 @@ func (v *VideoService) CreateJob(ctx context.Context, clientID, prompt, imageURL
 
 	now := time.Now()
 	job := models.AIVideoJob{
-		ID:        uuid.NewString(),
-		ClientID:  clientID,
-		Prompt:    strings.TrimSpace(prompt),
-		ImageURL:  strings.TrimSpace(imageURL),
-		Provider:  "replicate",
-		Model:     v.Model,
-		Status:    "processing",
+		ID:          uuid.NewString(),
+		ClientID:    clientID,
+		Prompt:      strings.TrimSpace(prompt),
+		ImageURL:    strings.TrimSpace(imageURL),
+		Provider:    "replicate",
+		Model:       v.Model,
+		Status:      "processing",
 		CostCredits: duration,
-		CreatedAt: now,
-		UpdatedAt: now,
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	}
 
 	input := map[string]any{
-		"prompt": job.Prompt,
-		"duration": duration,
+		"prompt":       job.Prompt,
+		"duration":     duration,
 		"aspect_ratio": "9:16",
 	}
 
@@ -98,9 +232,9 @@ func (v *VideoService) CreateJob(ctx context.Context, clientID, prompt, imageURL
 	var parsed struct {
 		ID     string `json:"id"`
 		Status string `json:"status"`
-		Output any `json:"output"`
-		Error any `json:"error"`
-		Urls struct {
+		Output any    `json:"output"`
+		Error  any    `json:"error"`
+		Urls   struct {
 			Get string `json:"get"`
 		} `json:"urls"`
 	}
@@ -108,6 +242,9 @@ func (v *VideoService) CreateJob(ctx context.Context, clientID, prompt, imageURL
 	_ = json.Unmarshal(raw, &parsed)
 
 	if resp.StatusCode >= 300 {
+		if strings.TrimSpace(string(raw)) == "" || strings.TrimSpace(string(raw)) == "{}" {
+			return models.AIVideoJob{}, fmt.Errorf("replicate no aceptó la solicitud. Revisa modelo, saldo, parámetros o intenta con prompt más corto")
+		}
 		return models.AIVideoJob{}, fmt.Errorf("replicate error: %s", string(raw))
 	}
 
@@ -172,8 +309,8 @@ func (v *VideoService) RefreshJob(ctx context.Context, jobID string) (models.AIV
 
 	var parsed struct {
 		Status string `json:"status"`
-		Output any `json:"output"`
-		Error any `json:"error"`
+		Output any    `json:"output"`
+		Error  any    `json:"error"`
 	}
 
 	_ = json.Unmarshal(raw, &parsed)
@@ -198,6 +335,85 @@ func (v *VideoService) RefreshJob(ctx context.Context, jobID string) (models.AIV
 		SET video_url=?, status=?, error=?, updated_at=?, completed_at=?
 		WHERE id=?
 	`, job.VideoURL, job.Status, job.Error, job.UpdatedAt, job.CompletedAt, job.ID)
+
+	return job, nil
+}
+
+func (v *VideoService) AddMusicToJob(ctx context.Context, jobID, category string) (models.AIVideoJob, error) {
+	job, err := v.GetJob(jobID)
+	if err != nil {
+		return models.AIVideoJob{}, err
+	}
+
+	if strings.TrimSpace(job.VideoURL) == "" {
+		return models.AIVideoJob{}, fmt.Errorf("video no disponible")
+	}
+
+	if strings.TrimSpace(category) == "" || strings.ToLower(category) == "auto" {
+		category = detectMusicCategory(job.Prompt)
+	}
+
+	musicPath, err := pickRandomMusic(category)
+	if err != nil {
+		return models.AIVideoJob{}, err
+	}
+
+	dir := videoAssetsDir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return models.AIVideoJob{}, err
+	}
+
+	tmpInput := filepath.Join(os.TempDir(), uuid.NewString()+"_input.mp4")
+	outputName := uuid.NewString() + "_music.mp4"
+	outputPath := filepath.Join(dir, outputName)
+
+	if err := downloadFile(ctx, job.VideoURL, tmpInput); err != nil {
+		return models.AIVideoJob{}, fmt.Errorf("descargando video: %w", err)
+	}
+	defer os.Remove(tmpInput)
+
+	ffCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+
+	cmd := exec.CommandContext(
+		ffCtx,
+		"ffmpeg",
+		"-y",
+		"-i", tmpInput,
+		"-stream_loop", "-1",
+		"-i", musicPath,
+		"-filter_complex", "[1:a]volume=0.18[a]",
+		"-map", "0:v:0",
+		"-map", "[a]",
+		"-shortest",
+		"-c:v", "copy",
+		"-c:a", "aac",
+		"-b:a", "128k",
+		"-movflags", "+faststart",
+		outputPath,
+	)
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return models.AIVideoJob{}, fmt.Errorf("ffmpeg error: %s", string(out))
+	}
+
+	now := time.Now()
+	job.VideoURL = v.publicAssetURL(outputName)
+	job.Status = "completed"
+	job.Error = ""
+	job.UpdatedAt = now
+	job.CompletedAt = &now
+
+	_, err = v.DB.Exec(`
+		UPDATE ai_video_jobs
+		SET video_url=?, status=?, error=?, updated_at=?, completed_at=?
+		WHERE id=?
+	`, job.VideoURL, job.Status, job.Error, job.UpdatedAt, job.CompletedAt, job.ID)
+
+	if err != nil {
+		return models.AIVideoJob{}, err
+	}
 
 	return job, nil
 }
