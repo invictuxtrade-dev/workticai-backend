@@ -3,6 +3,7 @@ package services
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -144,7 +145,11 @@ func downloadFile(ctx context.Context, fileURL, dst string) error {
 		return err
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{
+	Timeout: 90 * time.Second,
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -406,7 +411,7 @@ func (v *VideoService) generateVoice(text string) (string, error) {
 	}
 
 	payload := map[string]any{
-		"model": "gpt-4o-mini-tts",
+		"model": "tts-1",
 		"voice": "alloy",
 		"input": text,
 	}
@@ -429,7 +434,15 @@ func (v *VideoService) generateVoice(text string) (string, error) {
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: 90 * time.Second}
+	client := &http.Client{
+	Timeout: 120 * time.Second,
+	Transport: &http.Transport{
+		TLSClientConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		},
+		ForceAttemptHTTP2: false,
+	},
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {
