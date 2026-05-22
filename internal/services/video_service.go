@@ -154,6 +154,189 @@ func downloadFile(ctx context.Context, fileURL, dst string) error {
 	return err
 }
 
+func safeVideoExt(name string) string {
+	ext := strings.ToLower(filepath.Ext(name))
+	switch ext {
+	case ".mp4", ".mov", ".webm", ".m4v":
+		return ext
+	default:
+		return ".mp4"
+	}
+}
+
+func (v *VideoService) ImportUploadedVideo(ctx context.Context, clientID string, file io.Reader, originalName string) (models.AIVideoJob, error) {
+	if err := os.MkdirAll(videoAssetsDir(), 0o755); err != nil {
+		return models.AIVideoJob{}, err
+	}
+
+	filename := uuid.NewString() + safeVideoExt(originalName)
+	outPath := filepath.Join(videoAssetsDir(), filename)
+
+	out, err := os.Create(outPath)
+	if err != nil {
+		return models.AIVideoJob{}, err
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, file); err != nil {
+		return models.AIVideoJob{}, err
+	}
+
+	now := time.Now()
+	job := models.AIVideoJob{
+		ID:          uuid.NewString(),
+		ClientID:    clientID,
+		Prompt:      "Video importado desde dispositivo",
+		VideoURL:    v.publicAssetURL(filename),
+		Provider:    "upload",
+		Model:       "manual-upload",
+		Status:      "completed",
+		CostCredits: 0,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+		CompletedAt: &now,
+	}
+
+	_, err = v.DB.Exec(`
+		INSERT INTO ai_video_jobs (
+			id, client_id, prompt, image_url, video_url, provider, model,
+			provider_job_id, provider_get_url, status, error,
+			cost_credits, created_at, updated_at, completed_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		job.ID, job.ClientID, job.Prompt, job.ImageURL, job.VideoURL,
+		job.Provider, job.Model, job.ProviderJobID, job.ProviderGetURL,
+		job.Status, job.Error, job.CostCredits, job.CreatedAt, job.UpdatedAt, job.CompletedAt,
+	)
+
+	return job, err
+}
+
+func (v *VideoService) TrimVideo(ctx context.Context, jobID string, startSeconds, endSeconds float64) (models.AIVideoJob, error) {
+	job, err := v.GetJob(jobID)
+	if err != nil {
+		return models.AIVideoJob{}, err
+	}
+	if job.VideoURL == "" {
+		return models.AIVideoJob{}, fmt.Errorf("video no disponible")
+	}
+	if endSeconds <= startSeconds {
+		return models.AIVideoJob{}, fmt.Errorf("rango inválido")
+	}
+
+	tmpInput := filepath.Join(os.TempDir(), uuid.NewString()+"_trim_input.mp4")
+	if err := downloadFile(ctx, job.VideoURL, tmpInput); err != nil {
+		return models.AIVideoJob{}, err
+	}
+	defer os.Remove(tmpInput)
+
+	outputName := uuid.NewString() + "_trim.mp4"
+	outputPath := filepath.Join(videoAssetsDir(), outputName)
+
+	duration := endSeconds - startSeconds
+
+	cmd := exec.CommandContext(
+		ctx,
+		"ffmpeg",
+		"-y",
+		"-ss", fmt.Sprintf("%.2f", startSeconds),
+		"-i", tmpInput,
+		"-t", fmt.Sprintf("%.2f", duration),
+		"-c:v", "libx264",
+		"-preset", "ultrafast",
+		"-crf", "28",
+		"-c:a", "aac",
+		"-b:a", "128k",
+		"-movflags", "+faststart",
+		outputPath,
+	)
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return models.AIVideoJob{}, fmt.Errorf("ffmpeg trim error: %s", string(out))
+	}
+
+	now := time.Now()
+	job.VideoURL = v.publicAssetURL(outputName)
+	job.Status = "completed"
+	job.UpdatedAt = now
+	job.CompletedAt = &now
+
+	_, err = v.DB.Exec(`
+		UPDATE ai_video_jobs
+		SET video_url=?, status='completed', error='', updated_at=?, completed_at=?
+		WHERE id=?
+	`, job.VideoURL, job.UpdatedAt, job.CompletedAt, job.ID)
+
+	return job, err
+}
+
+func (v *VideoService) ExportPreset(ctx context.Context, jobID, preset string) (models.AIVideoJob, error) {
+	job, err := v.GetJob(jobID)
+	if err != nil {
+		return models.AIVideoJob{}, err
+	}
+	if job.VideoURL == "" {
+		return models.AIVideoJob{}, fmt.Errorf("video no disponible")
+	}
+
+	preset = strings.ToLower(strings.TrimSpace(preset))
+	if preset == "" {
+		preset = "reels"
+	}
+
+	width := 1080
+	height := 1920
+
+	tmpInput := filepath.Join(os.TempDir(), uuid.NewString()+"_export_input.mp4")
+	if err := downloadFile(ctx, job.VideoURL, tmpInput); err != nil {
+		return models.AIVideoJob{}, err
+	}
+	defer os.Remove(tmpInput)
+
+	outputName := uuid.NewString() + "_" + preset + ".mp4"
+	outputPath := filepath.Join(videoAssetsDir(), outputName)
+
+	filter := fmt.Sprintf(
+		"scale=%d:%d:force_original_aspect_ratio=increase,crop=%d:%d",
+		width, height, width, height,
+	)
+
+	cmd := exec.CommandContext(
+		ctx,
+		"ffmpeg",
+		"-y",
+		"-i", tmpInput,
+		"-vf", filter,
+		"-c:v", "libx264",
+		"-preset", "ultrafast",
+		"-crf", "26",
+		"-c:a", "aac",
+		"-b:a", "128k",
+		"-movflags", "+faststart",
+		outputPath,
+	)
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return models.AIVideoJob{}, fmt.Errorf("ffmpeg export error: %s", string(out))
+	}
+
+	now := time.Now()
+	job.VideoURL = v.publicAssetURL(outputName)
+	job.Status = "completed"
+	job.UpdatedAt = now
+	job.CompletedAt = &now
+
+	_, err = v.DB.Exec(`
+		UPDATE ai_video_jobs
+		SET video_url=?, status='completed', error='', updated_at=?, completed_at=?
+		WHERE id=?
+	`, job.VideoURL, job.UpdatedAt, job.CompletedAt, job.ID)
+
+	return job, err
+}
+
 func (v *VideoService) CreateJob(ctx context.Context, clientID, prompt, imageURL string, duration int) (models.AIVideoJob, error) {
 	if strings.TrimSpace(v.APIKey) == "" {
 		return models.AIVideoJob{}, fmt.Errorf("REPLICATE_API_TOKEN no configurado")

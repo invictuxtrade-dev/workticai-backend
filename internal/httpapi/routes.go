@@ -114,6 +114,9 @@ func (s *Server) routes() {
 	secured.HandleFunc("/social/videos/{id}/download", s.handleDownloadAIVideo).Methods("GET", "OPTIONS")
 	secured.HandleFunc("/social/videos/{id}/add-music", s.handleAddMusicAIVideo).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/social/videos/{id}/voice-subtitles", s.handleVoiceSubtitlesAIVideo).Methods("POST", "OPTIONS")
+	secured.HandleFunc("/social/videos/upload", s.handleUploadAIVideo).Methods("POST", "OPTIONS")
+	secured.HandleFunc("/social/videos/{id}/trim", s.handleTrimAIVideo).Methods("POST", "OPTIONS")
+	secured.HandleFunc("/social/videos/{id}/export", s.handleExportAIVideo).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/social/instagram/verify", s.handleVerifyInstagram).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/social/instagram/data", s.handleInstagramData).Methods("GET", "OPTIONS")
 	secured.HandleFunc("/social/publish-multi", s.handlePublishMulti).Methods("POST", "OPTIONS")
@@ -2895,4 +2898,78 @@ func (s *Server) handleVoiceSubtitlesAIVideo(w http.ResponseWriter, r *http.Requ
 		"success": true,
 		"status":  "processing",
 	})
+}
+
+
+func (s *Server) handleUploadAIVideo(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+
+	clientID := r.URL.Query().Get("client_id")
+	if u.Role != "admin" {
+		clientID = u.ClientID
+	}
+	if strings.TrimSpace(clientID) == "" {
+		writeJSON(w, 400, map[string]any{"error": "client_id requerido"})
+		return
+	}
+
+	if err := r.ParseMultipartForm(200 << 20); err != nil {
+		writeJSON(w, 400, map[string]any{"error": "no se pudo leer el video"})
+		return
+	}
+
+	file, header, err := r.FormFile("video")
+	if err != nil {
+		writeJSON(w, 400, map[string]any{"error": "archivo video requerido"})
+		return
+	}
+	defer file.Close()
+
+	job, err := s.Video.ImportUploadedVideo(r.Context(), clientID, file, header.Filename)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, 201, job)
+}
+
+func (s *Server) handleTrimAIVideo(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+
+	var body struct {
+		StartSeconds float64 `json:"start_seconds"`
+		EndSeconds   float64 `json:"end_seconds"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, 400, map[string]any{"error": "invalid json"})
+		return
+	}
+
+	job, err := s.Video.TrimVideo(r.Context(), id, body.StartSeconds, body.EndSeconds)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, 200, job)
+}
+
+func (s *Server) handleExportAIVideo(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+
+	var body struct {
+		Preset string `json:"preset"` // tiktok | reels | shorts
+	}
+
+	_ = json.NewDecoder(r.Body).Decode(&body)
+
+	job, err := s.Video.ExportPreset(r.Context(), id, body.Preset)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, 200, job)
 }
