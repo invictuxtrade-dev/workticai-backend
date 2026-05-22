@@ -22,9 +22,17 @@ import (
 
 type VideoService struct {
 	DB      *sql.DB
-	APIKey  string
-	Model   string
+	APIKey string
+	Model  string
 	BaseURL string
+}
+
+type VoiceSubtitleOptions struct {
+	Text            string `json:"text"`
+	Language        string `json:"language"` // es | en
+	Gender          string `json:"gender"`   // female | male
+	EnableVoice     bool   `json:"enable_voice"`
+	EnableSubtitles bool   `json:"enable_subtitles"`
 }
 
 func NewVideoService(db *sql.DB, baseURL string) *VideoService {
@@ -35,8 +43,8 @@ func NewVideoService(db *sql.DB, baseURL string) *VideoService {
 
 	return &VideoService{
 		DB:      db,
-		APIKey:  os.Getenv("REPLICATE_API_TOKEN"),
-		Model:   model,
+		APIKey: os.Getenv("REPLICATE_API_TOKEN"),
+		Model:  model,
 		BaseURL: strings.TrimRight(baseURL, "/"),
 	}
 }
@@ -69,38 +77,19 @@ func detectMusicCategory(text string) string {
 	t := strings.ToLower(text)
 
 	switch {
-	case strings.Contains(t, "trading"),
-		strings.Contains(t, "forex"),
-		strings.Contains(t, "crypto"),
-		strings.Contains(t, "copytrading"),
-		strings.Contains(t, "invers"):
+	case strings.Contains(t, "trading"), strings.Contains(t, "forex"), strings.Contains(t, "crypto"), strings.Contains(t, "copytrading"), strings.Contains(t, "invers"):
 		return "trading"
-	case strings.Contains(t, "viral"),
-		strings.Contains(t, "tiktok"),
-		strings.Contains(t, "reel"),
-		strings.Contains(t, "short"):
+	case strings.Contains(t, "viral"), strings.Contains(t, "tiktok"), strings.Contains(t, "reel"), strings.Contains(t, "short"):
 		return "viral"
-	case strings.Contains(t, "cinematic"),
-		strings.Contains(t, "cinematográfico"),
-		strings.Contains(t, "película"):
+	case strings.Contains(t, "cinematic"), strings.Contains(t, "cinematográfico"), strings.Contains(t, "película"):
 		return "cinematic"
-	case strings.Contains(t, "luxury"),
-		strings.Contains(t, "lujo"),
-		strings.Contains(t, "premium"):
+	case strings.Contains(t, "luxury"), strings.Contains(t, "lujo"), strings.Contains(t, "premium"):
 		return "luxury"
-	case strings.Contains(t, "dark"),
-		strings.Contains(t, "oscuro"),
-		strings.Contains(t, "hacker"):
+	case strings.Contains(t, "dark"), strings.Contains(t, "oscuro"), strings.Contains(t, "hacker"):
 		return "dark"
-	case strings.Contains(t, "tech"),
-		strings.Contains(t, "tecnología"),
-		strings.Contains(t, "ia"),
-		strings.Contains(t, "ai"),
-		strings.Contains(t, "automatización"):
+	case strings.Contains(t, "tech"), strings.Contains(t, "tecnología"), strings.Contains(t, "ia"), strings.Contains(t, "ai"), strings.Contains(t, "automatización"):
 		return "tech"
-	case strings.Contains(t, "motivacional"),
-		strings.Contains(t, "éxito"),
-		strings.Contains(t, "crecimiento"):
+	case strings.Contains(t, "motivacional"), strings.Contains(t, "éxito"), strings.Contains(t, "crecimiento"):
 		return "motivational"
 	default:
 		return "corporate"
@@ -125,7 +114,6 @@ func pickRandomMusic(category string) (string, error) {
 		if f.IsDir() {
 			continue
 		}
-
 		ext := strings.ToLower(filepath.Ext(f.Name()))
 		if ext == ".mp3" || ext == ".wav" || ext == ".m4a" {
 			candidates = append(candidates, filepath.Join(dir, f.Name()))
@@ -145,10 +133,7 @@ func downloadFile(ctx context.Context, fileURL, dst string) error {
 		return err
 	}
 
-	client := &http.Client{
-	Timeout: 90 * time.Second,
-	}
-
+	client := &http.Client{Timeout: 90 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -399,26 +384,56 @@ func (v *VideoService) AddMusicToJob(ctx context.Context, jobID, category string
 	return job, nil
 }
 
-func (v *VideoService) generateVoice(text string) (string, error) {
+func normalizeVoiceText(text, fallback, language string) string {
+	text = cleanSubtitleText(text)
+	if text != "" {
+		return text
+	}
+
+	fallback = cleanSubtitleText(fallback)
+	if fallback != "" {
+		return fallback
+	}
+
+	if language == "en" {
+		return "Discover how artificial intelligence can help your business grow."
+	}
+
+	return "Descubre cómo la inteligencia artificial puede ayudar a tu negocio a crecer."
+}
+
+func pickOpenAIVoice(gender string) string {
+	gender = strings.ToLower(strings.TrimSpace(gender))
+	if gender == "male" {
+		return "onyx"
+	}
+	return "nova"
+}
+
+func (v *VideoService) generateVoice(text, gender string) (string, error) {
 	apiKey := os.Getenv("OPENAI_API_KEY")
 	if strings.TrimSpace(apiKey) == "" {
 		return "", fmt.Errorf("OPENAI_API_KEY no configurada")
 	}
 
 	text = strings.TrimSpace(text)
+	if text == "" {
+		return "", fmt.Errorf("texto de voz vacío")
+	}
+
 	if len(text) > 450 {
 		text = text[:450]
 	}
 
 	payload := map[string]any{
 		"model": "tts-1",
-		"voice": "alloy",
+		"voice": pickOpenAIVoice(gender),
 		"input": text,
 	}
 
 	body, _ := json.Marshal(payload)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(
@@ -435,13 +450,13 @@ func (v *VideoService) generateVoice(text string) (string, error) {
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{
-	Timeout: 120 * time.Second,
-	Transport: &http.Transport{
-		TLSClientConfig: &tls.Config{
-			MinVersion: tls.VersionTLS12,
+		Timeout: 120 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				MinVersion: tls.VersionTLS12,
+			},
+			ForceAttemptHTTP2: false,
 		},
-		ForceAttemptHTTP2: false,
-	},
 	}
 
 	resp, err := client.Do(req)
@@ -477,8 +492,8 @@ func cleanSubtitleText(s string) string {
 	s = strings.ReplaceAll(s, "\n", " ")
 	s = strings.ReplaceAll(s, "\r", " ")
 	s = strings.ReplaceAll(s, `"`, `'`)
-	if len(s) > 160 {
-		s = s[:160] + "..."
+	if len(s) > 220 {
+		s = s[:220] + "..."
 	}
 	return s
 }
@@ -492,7 +507,6 @@ func createSRT(text string, duration int, path string) error {
 	}
 
 	text = cleanSubtitleText(text)
-
 	content := fmt.Sprintf(`1
 00:00:00,000 --> 00:00:%02d,000
 %s
@@ -509,7 +523,7 @@ func escapeSubtitlePath(path string) string {
 	return path
 }
 
-func (v *VideoService) AddVoiceAndSubtitles(jobID string) error {
+func (v *VideoService) AddVoiceAndSubtitles(jobID string, opts VoiceSubtitleOptions) error {
 	_, _ = v.DB.Exec(`
 		UPDATE ai_video_jobs
 		SET status='processing', error='', updated_at=?
@@ -525,6 +539,24 @@ func (v *VideoService) AddVoiceAndSubtitles(jobID string) error {
 		return fmt.Errorf("video vacío")
 	}
 
+	if !opts.EnableVoice && !opts.EnableSubtitles {
+		err := fmt.Errorf("debes activar voz IA o subtítulos")
+		_ = v.markVideoJobError(jobID, err)
+		return err
+	}
+
+	opts.Language = strings.ToLower(strings.TrimSpace(opts.Language))
+	if opts.Language != "en" {
+		opts.Language = "es"
+	}
+
+	opts.Gender = strings.ToLower(strings.TrimSpace(opts.Gender))
+	if opts.Gender != "male" {
+		opts.Gender = "female"
+	}
+
+	voiceText := normalizeVoiceText(opts.Text, job.Prompt, opts.Language)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
 	defer cancel()
 
@@ -537,54 +569,78 @@ func (v *VideoService) AddVoiceAndSubtitles(jobID string) error {
 	}
 	defer os.Remove(tmpInput)
 
-	voiceText := cleanSubtitleText(job.Prompt)
-	voicePath, err := v.generateVoice(voiceText)
-	if err != nil {
-		_ = v.markVideoJobError(jobID, err)
-		return err
-	}
-	defer os.Remove(voicePath)
+	var voicePath string
 
-	if err := createSRT(voiceText, job.CostCredits, subPath); err != nil {
-		_ = v.markVideoJobError(jobID, err)
-		return err
+	if opts.EnableVoice {
+		voicePath, err = v.generateVoice(voiceText, opts.Gender)
+		if err != nil {
+			_ = v.markVideoJobError(jobID, err)
+			return err
+		}
+		defer os.Remove(voicePath)
 	}
-	defer os.Remove(subPath)
+
+	if opts.EnableSubtitles {
+		if err := createSRT(voiceText, job.CostCredits, subPath); err != nil {
+			_ = v.markVideoJobError(jobID, err)
+			return err
+		}
+		defer os.Remove(subPath)
+	}
 
 	if err := os.MkdirAll(videoAssetsDir(), 0o755); err != nil {
 		_ = v.markVideoJobError(jobID, err)
 		return err
 	}
 
-	outputName := fmt.Sprintf("video_voice_%d.mp4", time.Now().UnixNano())
+	outputName := fmt.Sprintf("video_final_%d.mp4", time.Now().UnixNano())
 	outputPath := filepath.Join(videoAssetsDir(), outputName)
 
-	subFilter := fmt.Sprintf(
-		"subtitles='%s':force_style='FontName=Arial,FontSize=18,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=70'",
-		escapeSubtitlePath(subPath),
+	args := []string{
+		"-y",
+		"-i", tmpInput,
+	}
+
+	if opts.EnableVoice {
+		args = append(args, "-i", voicePath)
+	}
+
+	if opts.EnableSubtitles {
+		subFilter := fmt.Sprintf(
+			"subtitles='%s':force_style='FontName=Arial,FontSize=18,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=70'",
+			escapeSubtitlePath(subPath),
+		)
+		args = append(args, "-vf", subFilter)
+	}
+
+	args = append(args, "-map", "0:v:0")
+
+	if opts.EnableVoice {
+		args = append(args, "-map", "1:a:0")
+	} else {
+		args = append(args, "-an")
+	}
+
+	args = append(args,
+		"-preset", "ultrafast",
+		"-crf", "30",
+		"-c:v", "libx264",
+	)
+
+	if opts.EnableVoice {
+		args = append(args, "-c:a", "aac", "-b:a", "96k")
+	}
+
+	args = append(args,
+		"-shortest",
+		"-movflags", "+faststart",
+		outputPath,
 	)
 
 	ffCtx, ffCancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer ffCancel()
 
-	cmd := exec.CommandContext(
-		ffCtx,
-		"ffmpeg",
-		"-y",
-		"-i", tmpInput,
-		"-i", voicePath,
-		"-vf", subFilter,
-		"-map", "0:v:0",
-		"-map", "1:a:0",
-		"-preset", "ultrafast",
-		"-crf", "30",
-		"-c:v", "libx264",
-		"-c:a", "aac",
-		"-b:a", "96k",
-		"-shortest",
-		"-movflags", "+faststart",
-		outputPath,
-	)
+	cmd := exec.CommandContext(ffCtx, "ffmpeg", args...)
 
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -611,7 +667,6 @@ func (v *VideoService) markVideoJobError(jobID string, err error) error {
 		SET status='error', error=?, updated_at=?
 		WHERE id=?
 	`, err.Error(), time.Now(), jobID)
-
 	return dbErr
 }
 
