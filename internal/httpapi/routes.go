@@ -118,6 +118,7 @@ func (s *Server) routes() {
 	secured.HandleFunc("/social/videos/{id}/trim", s.handleTrimAIVideo).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/social/videos/{id}/export", s.handleExportAIVideo).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/social/videos/{id}/effect", s.handleEffectAIVideo).Methods("POST", "OPTIONS")
+	secured.HandleFunc("/social/videos/{id}/animated-captions", s.handleAnimatedCaptionsAIVideo).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/social/instagram/verify", s.handleVerifyInstagram).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/social/instagram/data", s.handleInstagramData).Methods("GET", "OPTIONS")
 	secured.HandleFunc("/social/publish-multi", s.handlePublishMulti).Methods("POST", "OPTIONS")
@@ -2988,6 +2989,24 @@ func (s *Server) handleEffectAIVideo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	job, err := s.Video.ApplyTikTokEffect(r.Context(), id, body.Effect)
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, 200, job)
+}
+
+func (s *Server) handleAnimatedCaptionsAIVideo(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+
+	var body services.AnimatedCaptionOptions
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, 400, map[string]any{"error": "invalid json"})
+		return
+	}
+
+	job, err := s.Video.AddAnimatedCaptions(r.Context(), id, body)
 	if err != nil {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
 		return

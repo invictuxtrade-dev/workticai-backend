@@ -35,6 +35,11 @@ type VoiceSubtitleOptions struct {
 	EnableSubtitles bool   `json:"enable_subtitles"`
 }
 
+type AnimatedCaptionOptions struct {
+	Text  string `json:"text"`
+	Style string `json:"style"` // karaoke | neon | bold | minimal
+}
+
 func NewVideoService(db *sql.DB, baseURL string) *VideoService {
 	model := os.Getenv("REPLICATE_VIDEO_MODEL")
 	if model == "" {
@@ -958,6 +963,211 @@ func (v *VideoService) ApplyTikTokEffect(ctx context.Context, jobID, effect stri
 	`, job.VideoURL, job.UpdatedAt, job.CompletedAt, job.ID)
 
 	return job, err
+}
+
+func (v *VideoService) AddAnimatedCaptions(ctx context.Context, jobID string, opts AnimatedCaptionOptions) (models.AIVideoJob, error) {
+	job, err := v.GetJob(jobID)
+	if err != nil {
+		return models.AIVideoJob{}, err
+	}
+
+	if strings.TrimSpace(job.VideoURL) == "" {
+		return models.AIVideoJob{}, fmt.Errorf("video no disponible")
+	}
+
+	text := strings.TrimSpace(opts.Text)
+	if text == "" {
+		text = strings.TrimSpace(job.Prompt)
+	}
+	if text == "" {
+		text = "Automatiza tus ventas con Worktic AI"
+	}
+
+	style := strings.ToLower(strings.TrimSpace(opts.Style))
+	if style == "" {
+		style = "karaoke"
+	}
+
+	if err := os.MkdirAll(videoAssetsDir(), 0o755); err != nil {
+		return models.AIVideoJob{}, err
+	}
+
+	tmpInput := filepath.Join(os.TempDir(), uuid.NewString()+"_caption_input.mp4")
+	if err := downloadFile(ctx, job.VideoURL, tmpInput); err != nil {
+		return models.AIVideoJob{}, err
+	}
+	defer os.Remove(tmpInput)
+
+	assName := uuid.NewString() + "_animated.ass"
+	assPath := filepath.Join(os.TempDir(), assName)
+	defer os.Remove(assPath)
+
+	if err := createAnimatedASS(text, style, assPath); err != nil {
+		return models.AIVideoJob{}, err
+	}
+
+	outputName := uuid.NewString() + "_animated_captions.mp4"
+	outputPath := filepath.Join(videoAssetsDir(), outputName)
+
+	filter := fmt.Sprintf("ass=%s", escapeASSPath(assPath))
+
+	ffCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+
+	cmd := exec.CommandContext(
+		ffCtx,
+		"ffmpeg",
+		"-y",
+		"-i", tmpInput,
+		"-vf", filter,
+		"-c:v", "libx264",
+		"-preset", "ultrafast",
+		"-crf", "27",
+		"-c:a", "aac",
+		"-b:a", "128k",
+		"-movflags", "+faststart",
+		outputPath,
+	)
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return models.AIVideoJob{}, fmt.Errorf("ffmpeg animated captions error: %s", string(out))
+	}
+
+	now := time.Now()
+	job.VideoURL = v.publicAssetURL(outputName)
+	job.Status = "completed"
+	job.Error = ""
+	job.UpdatedAt = now
+	job.CompletedAt = &now
+
+	_, err = v.DB.Exec(`
+		UPDATE ai_video_jobs
+		SET video_url=?, status='completed', error='', updated_at=?, completed_at=?
+		WHERE id=?
+	`, job.VideoURL, job.Status, job.Error, job.UpdatedAt, job.CompletedAt, job.ID)
+
+	return job, err
+}
+
+func createAnimatedASS(text, style, path string) error {
+	words := strings.Fields(cleanSubtitleText(text))
+	if len(words) == 0 {
+		return fmt.Errorf("texto vacío")
+	}
+
+	chunks := []string{}
+	for i := 0; i < len(words); i += 4 {
+		end := i + 4
+		if end > len(words) {
+			end = len(words)
+		}
+		chunks = append(chunks, strings.Join(words[i:end], " "))
+	}
+
+	var primary, outline, back string
+	fontSize := 74
+	outlineSize := 4
+
+	switch style {
+	case "neon":
+		primary = "&H0000FFD5"
+		outline = "&H007430E2"
+		back = "&H80000000"
+		fontSize = 70
+	case "bold":
+		primary = "&H0000FFFF"
+		outline = "&H00000000"
+		back = "&H40000000"
+		fontSize = 82
+		outlineSize = 5
+	case "minimal":
+		primary = "&H00FFFFFF"
+		outline = "&H00222222"
+		back = "&H70000000"
+		fontSize = 58
+	default:
+		primary = "&H00FFFFFF"
+		outline = "&H007430E2"
+		back = "&H60000000"
+	}
+
+	var b strings.Builder
+
+	b.WriteString("[Script Info]\n")
+	b.WriteString("ScriptType: v4.00+\n")
+	b.WriteString("PlayResX: 1080\n")
+	b.WriteString("PlayResY: 1920\n\n")
+
+	b.WriteString("[V4+ Styles]\n")
+	b.WriteString("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
+	b.WriteString(fmt.Sprintf(
+		"Style: Default,Arial,%d,%s,&H000000FF,%s,%s,-1,0,0,0,100,100,0,0,1,%d,0,2,80,80,190,1\n\n",
+		fontSize,
+		primary,
+		outline,
+		back,
+		outlineSize,
+	))
+
+	b.WriteString("[Events]\n")
+	b.WriteString("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
+
+	chunkDuration := 1.15
+	for i, chunk := range chunks {
+		start := float64(i) * chunkDuration
+		end := start + chunkDuration
+
+		animated := buildASSAnimatedText(chunk, style)
+
+		b.WriteString(fmt.Sprintf(
+			"Dialogue: 0,%s,%s,Default,,0,0,0,,%s\n",
+			formatASSTime(start),
+			formatASSTime(end),
+			animated,
+		))
+	}
+
+	return os.WriteFile(path, []byte(b.String()), 0o644)
+}
+
+func buildASSAnimatedText(text, style string) string {
+	escaped := escapeASSText(text)
+
+	switch style {
+	case "neon":
+		return fmt.Sprintf(`{\fad(80,120)\t(0,180,\fscx116\fscy116)\t(180,360,\fscx100\fscy100)\blur1.2}%s`, escaped)
+	case "bold":
+		return fmt.Sprintf(`{\fad(60,100)\t(0,140,\fscx122\fscy122)\t(140,300,\fscx100\fscy100)}%s`, escaped)
+	case "minimal":
+		return fmt.Sprintf(`{\fad(120,120)\t(0,180,\fscx105\fscy105)}%s`, escaped)
+	default:
+		return fmt.Sprintf(`{\fad(60,100)\t(0,160,\fscx118\fscy118)\t(160,320,\fscx100\fscy100)}%s`, escaped)
+	}
+}
+
+func formatASSTime(seconds float64) string {
+	h := int(seconds) / 3600
+	m := (int(seconds) % 3600) / 60
+	s := int(seconds) % 60
+	cs := int((seconds - float64(int(seconds))) * 100)
+
+	return fmt.Sprintf("%d:%02d:%02d.%02d", h, m, s, cs)
+}
+
+func escapeASSText(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, "{", "")
+	s = strings.ReplaceAll(s, "}", "")
+	s = strings.ReplaceAll(s, "\n", " ")
+	return s
+}
+
+func escapeASSPath(path string) string {
+	path = filepath.ToSlash(path)
+	path = strings.ReplaceAll(path, ":", `\:`)
+	path = strings.ReplaceAll(path, "'", `\'`)
+	return path
 }
 
 func (v *VideoService) GetJob(id string) (models.AIVideoJob, error) {
