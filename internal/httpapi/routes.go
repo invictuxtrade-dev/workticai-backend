@@ -2881,15 +2881,15 @@ func (s *Server) handleAddMusicAIVideo(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleVoiceSubtitlesAIVideo(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
 
-	err := s.Video.AddVoiceAndSubtitles(id)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{
-			"error": err.Error(),
-		})
-		return
-	}
+	go func() {
+		err := s.Video.AddVoiceAndSubtitles(id)
+		if err != nil {
+			fmt.Println("voice subtitles error:", err)
+		}
+	}()
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	writeJSON(w, 200, map[string]any{
 		"success": true,
+		"status": "processing",
 	})
 }

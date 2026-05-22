@@ -74,40 +74,33 @@ func detectMusicCategory(text string) string {
 		strings.Contains(t, "copytrading"),
 		strings.Contains(t, "invers"):
 		return "trading"
-
 	case strings.Contains(t, "viral"),
 		strings.Contains(t, "tiktok"),
 		strings.Contains(t, "reel"),
 		strings.Contains(t, "short"):
 		return "viral"
-
 	case strings.Contains(t, "cinematic"),
 		strings.Contains(t, "cinematográfico"),
 		strings.Contains(t, "película"):
 		return "cinematic"
-
 	case strings.Contains(t, "luxury"),
 		strings.Contains(t, "lujo"),
 		strings.Contains(t, "premium"):
 		return "luxury"
-
 	case strings.Contains(t, "dark"),
 		strings.Contains(t, "oscuro"),
 		strings.Contains(t, "hacker"):
 		return "dark"
-
 	case strings.Contains(t, "tech"),
 		strings.Contains(t, "tecnología"),
 		strings.Contains(t, "ia"),
 		strings.Contains(t, "ai"),
 		strings.Contains(t, "automatización"):
 		return "tech"
-
 	case strings.Contains(t, "motivacional"),
 		strings.Contains(t, "éxito"),
 		strings.Contains(t, "crecimiento"):
 		return "motivational"
-
 	default:
 		return "corporate"
 	}
@@ -204,12 +197,7 @@ func (v *VideoService) CreateJob(ctx context.Context, clientID, prompt, imageURL
 		input["image"] = job.ImageURL
 	}
 
-	payload := map[string]any{
-		"input": input,
-	}
-
-	body, _ := json.Marshal(payload)
-
+	body, _ := json.Marshal(map[string]any{"input": input})
 	apiURL := fmt.Sprintf("https://api.replicate.com/v1/models/%s/predictions", v.Model)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewBuffer(body))
@@ -258,21 +246,9 @@ func (v *VideoService) CreateJob(ctx context.Context, clientID, prompt, imageURL
 			cost_credits, created_at, updated_at, completed_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
-		job.ID,
-		job.ClientID,
-		job.Prompt,
-		job.ImageURL,
-		job.VideoURL,
-		job.Provider,
-		job.Model,
-		job.ProviderJobID,
-		job.ProviderGetURL,
-		job.Status,
-		job.Error,
-		job.CostCredits,
-		job.CreatedAt,
-		job.UpdatedAt,
-		job.CompletedAt,
+		job.ID, job.ClientID, job.Prompt, job.ImageURL, job.VideoURL, job.Provider, job.Model,
+		job.ProviderJobID, job.ProviderGetURL, job.Status, job.Error,
+		job.CostCredits, job.CreatedAt, job.UpdatedAt, job.CompletedAt,
 	)
 
 	if err != nil {
@@ -418,6 +394,214 @@ func (v *VideoService) AddMusicToJob(ctx context.Context, jobID, category string
 	return job, nil
 }
 
+func (v *VideoService) generateVoice(text string) (string, error) {
+	apiKey := os.Getenv("OPENAI_API_KEY")
+	if strings.TrimSpace(apiKey) == "" {
+		return "", fmt.Errorf("OPENAI_API_KEY no configurada")
+	}
+
+	text = strings.TrimSpace(text)
+	if len(text) > 450 {
+		text = text[:450]
+	}
+
+	payload := map[string]any{
+		"model": "gpt-4o-mini-tts",
+		"voice": "alloy",
+		"input": text,
+	}
+
+	body, _ := json.Marshal(payload)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		"https://api.openai.com/v1/audio/speech",
+		bytes.NewBuffer(body),
+	)
+	if err != nil {
+		return "", err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 90 * time.Second}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		raw, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("tts error: %s", string(raw))
+	}
+
+	if err := os.MkdirAll(videoAssetsDir(), 0o755); err != nil {
+		return "", err
+	}
+
+	filename := fmt.Sprintf("voice_%d.mp3", time.Now().UnixNano())
+	outPath := filepath.Join(videoAssetsDir(), filename)
+
+	out, err := os.Create(outPath)
+	if err != nil {
+		return "", err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, resp.Body)
+	return outPath, err
+}
+
+func cleanSubtitleText(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\r", " ")
+	s = strings.ReplaceAll(s, `"`, `'`)
+	if len(s) > 160 {
+		s = s[:160] + "..."
+	}
+	return s
+}
+
+func createSRT(text string, duration int, path string) error {
+	if duration <= 0 {
+		duration = 10
+	}
+	if duration > 20 {
+		duration = 20
+	}
+
+	text = cleanSubtitleText(text)
+
+	content := fmt.Sprintf(`1
+00:00:00,000 --> 00:00:%02d,000
+%s
+`, duration, text)
+
+	return os.WriteFile(path, []byte(content), 0o644)
+}
+
+func escapeSubtitlePath(path string) string {
+	path = filepath.ToSlash(path)
+	path = strings.ReplaceAll(path, `\`, `/`)
+	path = strings.ReplaceAll(path, ":", `\:`)
+	path = strings.ReplaceAll(path, "'", `\'`)
+	return path
+}
+
+func (v *VideoService) AddVoiceAndSubtitles(jobID string) error {
+	_, _ = v.DB.Exec(`
+		UPDATE ai_video_jobs
+		SET status='processing', error='', updated_at=?
+		WHERE id=?
+	`, time.Now(), jobID)
+
+	job, err := v.GetJob(jobID)
+	if err != nil {
+		return err
+	}
+
+	if strings.TrimSpace(job.VideoURL) == "" {
+		return fmt.Errorf("video vacío")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
+	defer cancel()
+
+	tmpInput := filepath.Join(os.TempDir(), jobID+"_input.mp4")
+	subPath := filepath.Join(os.TempDir(), jobID+".srt")
+
+	if err := downloadFile(ctx, job.VideoURL, tmpInput); err != nil {
+		_ = v.markVideoJobError(jobID, err)
+		return err
+	}
+	defer os.Remove(tmpInput)
+
+	voiceText := cleanSubtitleText(job.Prompt)
+	voicePath, err := v.generateVoice(voiceText)
+	if err != nil {
+		_ = v.markVideoJobError(jobID, err)
+		return err
+	}
+	defer os.Remove(voicePath)
+
+	if err := createSRT(voiceText, job.CostCredits, subPath); err != nil {
+		_ = v.markVideoJobError(jobID, err)
+		return err
+	}
+	defer os.Remove(subPath)
+
+	if err := os.MkdirAll(videoAssetsDir(), 0o755); err != nil {
+		_ = v.markVideoJobError(jobID, err)
+		return err
+	}
+
+	outputName := fmt.Sprintf("video_voice_%d.mp4", time.Now().UnixNano())
+	outputPath := filepath.Join(videoAssetsDir(), outputName)
+
+	subFilter := fmt.Sprintf(
+		"subtitles='%s':force_style='FontName=Arial,FontSize=18,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=70'",
+		escapeSubtitlePath(subPath),
+	)
+
+	ffCtx, ffCancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer ffCancel()
+
+	cmd := exec.CommandContext(
+		ffCtx,
+		"ffmpeg",
+		"-y",
+		"-i", tmpInput,
+		"-i", voicePath,
+		"-vf", subFilter,
+		"-map", "0:v:0",
+		"-map", "1:a:0",
+		"-preset", "ultrafast",
+		"-crf", "30",
+		"-c:v", "libx264",
+		"-c:a", "aac",
+		"-b:a", "96k",
+		"-shortest",
+		"-movflags", "+faststart",
+		outputPath,
+	)
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		ffErr := fmt.Errorf("ffmpeg: %s", string(out))
+		_ = v.markVideoJobError(jobID, ffErr)
+		return ffErr
+	}
+
+	finalURL := v.publicAssetURL(outputName)
+	now := time.Now()
+
+	_, err = v.DB.Exec(`
+		UPDATE ai_video_jobs
+		SET video_url=?, status='completed', error='', updated_at=?, completed_at=?
+		WHERE id=?
+	`, finalURL, now, now, jobID)
+
+	return err
+}
+
+func (v *VideoService) markVideoJobError(jobID string, err error) error {
+	_, dbErr := v.DB.Exec(`
+		UPDATE ai_video_jobs
+		SET status='error', error=?, updated_at=?
+		WHERE id=?
+	`, err.Error(), time.Now(), jobID)
+
+	return dbErr
+}
+
 func extractReplicateOutputURL(output any) string {
 	switch v := output.(type) {
 	case string:
@@ -508,143 +692,4 @@ func (v *VideoService) ListJobs(clientID string) ([]models.AIVideoJob, error) {
 	}
 
 	return out, nil
-}
-
-func (v *VideoService) generateVoice(text string) (string, error) {
-	apiKey := os.Getenv("OPENAI_API_KEY")
-	if strings.TrimSpace(apiKey) == "" {
-		return "", fmt.Errorf("OPENAI_API_KEY no configurada")
-	}
-
-	payload := map[string]any{
-		"model": "gpt-4o-mini-tts",
-		"voice": "alloy",
-		"input": text,
-	}
-
-	body, _ := json.Marshal(payload)
-
-	req, err := http.NewRequest(
-		http.MethodPost,
-		"https://api.openai.com/v1/audio/speech",
-		bytes.NewBuffer(body),
-	)
-	if err != nil {
-		return "", err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 300 {
-		raw, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("tts error: %s", string(raw))
-	}
-
-	filename := fmt.Sprintf("voice_%d.mp3", time.Now().UnixNano())
-	outPath := filepath.Join(videoAssetsDir(), filename)
-
-	out, err := os.Create(outPath)
-	if err != nil {
-		return "", err
-	}
-	defer out.Close()
-
-	_, err = io.Copy(out, resp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	return outPath, nil
-}
-
-func createSRT(text string, duration int, path string) error {
-	content := fmt.Sprintf(`1
-00:00:00,000 --> 00:00:%02d,000
-%s
-`, duration, text)
-
-	return os.WriteFile(path, []byte(content), 0644)
-}
-
-func (v *VideoService) AddVoiceAndSubtitles(jobID string) error {
-	row := v.DB.QueryRow(`
-		SELECT video_url, prompt
-		FROM ai_video_jobs
-		WHERE id = ?
-	`, jobID)
-
-	var videoURL string
-	var prompt string
-
-	if err := row.Scan(&videoURL, &prompt); err != nil {
-		return err
-	}
-
-	if strings.TrimSpace(videoURL) == "" {
-		return fmt.Errorf("video vacío")
-	}
-
-	ctx := context.Background()
-
-	tmpInput := filepath.Join(os.TempDir(), jobID+"_input.mp4")
-
-	err := downloadFile(ctx, videoURL, tmpInput)
-	if err != nil {
-		return err
-	}
-
-	voicePath, err := v.generateVoice(prompt)
-	if err != nil {
-		return err
-	}
-
-	subPath := filepath.Join(os.TempDir(), jobID+".srt")
-
-	err = createSRT(prompt, 15, subPath)
-	if err != nil {
-		return err
-	}
-
-	outputName := fmt.Sprintf("video_voice_%d.mp4", time.Now().UnixNano())
-	outputPath := filepath.Join(videoAssetsDir(), outputName)
-
-	cmd := exec.Command(
-		"ffmpeg",
-		"-y",
-		"-i", tmpInput,
-		"-i", voicePath,
-		"-vf", fmt.Sprintf("subtitles=%s", subPath),
-		"-map", "0:v",
-		"-map", "1:a",
-		"-c:v", "libx264",
-		"-c:a", "aac",
-		"-shortest",
-		outputPath,
-	)
-
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("ffmpeg: %s", string(out))
-	}
-
-	finalURL := v.publicAssetURL(outputName)
-
-	_, err = v.DB.Exec(`
-		UPDATE ai_video_jobs
-		SET video_url = ?, updated_at = ?
-		WHERE id = ?
-	`,
-		finalURL,
-		time.Now(),
-		jobID,
-	)
-
-	return err
 }
