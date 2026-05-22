@@ -871,6 +871,95 @@ func extractReplicateOutputURL(output any) string {
 	return ""
 }
 
+func (v *VideoService) ApplyTikTokEffect(ctx context.Context, jobID, effect string) (models.AIVideoJob, error) {
+	job, err := v.GetJob(jobID)
+	if err != nil {
+		return models.AIVideoJob{}, err
+	}
+
+	if strings.TrimSpace(job.VideoURL) == "" {
+		return models.AIVideoJob{}, fmt.Errorf("video no disponible")
+	}
+
+	effect = strings.ToLower(strings.TrimSpace(effect))
+	if effect == "" {
+		effect = "glow"
+	}
+
+	tmpInput := filepath.Join(os.TempDir(), uuid.NewString()+"_effect_input.mp4")
+	if err := downloadFile(ctx, job.VideoURL, tmpInput); err != nil {
+		return models.AIVideoJob{}, err
+	}
+	defer os.Remove(tmpInput)
+
+	outputName := uuid.NewString() + "_effect_" + effect + ".mp4"
+	outputPath := filepath.Join(videoAssetsDir(), outputName)
+
+	filter := ""
+
+	switch effect {
+	case "zoom":
+		filter = "scale=iw*1.08:ih*1.08,crop=iw/1.08:ih/1.08"
+	case "shake":
+		filter = "crop=iw-20:ih-20:10+10*sin(t*40):10+10*cos(t*35),scale=iw:ih"
+	case "glow":
+		filter = "eq=contrast=1.18:brightness=0.04:saturation=1.35,unsharp=5:5:1.0"
+	case "flash":
+		filter = "eq=brightness='if(lt(mod(t,1),0.08),0.35,0)':contrast=1.15:saturation=1.25"
+	case "speed":
+		filter = "setpts=0.85*PTS,eq=contrast=1.15:saturation=1.25"
+	case "cinematic":
+		filter = "eq=contrast=1.22:brightness=-0.02:saturation=1.15,unsharp=5:5:0.8"
+	default:
+		filter = "eq=contrast=1.15:saturation=1.25"
+	}
+
+	args := []string{
+		"-y",
+		"-i", tmpInput,
+		"-vf", filter,
+	}
+
+	if effect == "speed" {
+		args = append(args, "-filter:a", "atempo=1.15")
+	}
+
+	args = append(args,
+		"-c:v", "libx264",
+		"-preset", "ultrafast",
+		"-crf", "27",
+		"-c:a", "aac",
+		"-b:a", "128k",
+		"-movflags", "+faststart",
+		outputPath,
+	)
+
+	ffCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+
+	cmd := exec.CommandContext(ffCtx, "ffmpeg", args...)
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return models.AIVideoJob{}, fmt.Errorf("ffmpeg effect error: %s", string(out))
+	}
+
+	now := time.Now()
+	job.VideoURL = v.publicAssetURL(outputName)
+	job.Status = "completed"
+	job.Error = ""
+	job.UpdatedAt = now
+	job.CompletedAt = &now
+
+	_, err = v.DB.Exec(`
+		UPDATE ai_video_jobs
+		SET video_url=?, status='completed', error='', updated_at=?, completed_at=?
+		WHERE id=?
+	`, job.VideoURL, job.UpdatedAt, job.CompletedAt, job.ID)
+
+	return job, err
+}
+
 func (v *VideoService) GetJob(id string) (models.AIVideoJob, error) {
 	var job models.AIVideoJob
 
