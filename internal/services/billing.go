@@ -21,87 +21,315 @@ func (b *BillingService) SeedDefaults() error {
 	now := time.Now()
 
 	defaultPlans := []models.Plan{
-		{
-			ID:           uuid.NewString(),
-			Name:         "Free",
-			Slug:         "free",
-			Description:  "Ideal para probar la plataforma.",
-			PriceMonthly: 0,
-			PriceYearly:  0,
-			Features:     `["1 bot WhatsApp","1 landing page","1 embudo básico","100 leads activos","IA limitada","Plantillas básicas","Branding Worktic","Soporte básico"]`,
-			IsFree:       true,
-			IsActive:     true,
-			SortOrder:    1,
-			CreatedAt:    now,
-			UpdatedAt:    now,
-		},
-		{
-			ID:           uuid.NewString(),
-			Name:         "Starter",
-			Slug:         "starter",
-			Description:  "Para negocios que están empezando.",
-			PriceMonthly: 7,
-			PriceYearly:  77,
-			Features:     `["1 bot WhatsApp","3 landing pages","1 funnel completo","IA de atención y ventas","Publicaciones básicas","Métricas básicas","1 usuario"]`,
-			IsFree:       false,
-			IsActive:     true,
-			SortOrder:    2,
-			CreatedAt:    now,
-			UpdatedAt:    now,
-		},
-		{
-			ID:           uuid.NewString(),
-			Name:         "Pro",
-			Slug:         "pro",
-			Description:  "El plan principal para marketers y pymes.",
-			PriceMonthly: 27,
-			PriceYearly:  277,
-			Features:     `["Hasta 5 bots","Funnels ilimitados","Landing pages ilimitadas","IA avanzada","Automatización inteligente","Programación de contenido","Métricas de leads y conversiones","Hasta 3 usuarios"]`,
-			IsFree:       false,
-			IsActive:     true,
-			SortOrder:    3,
-			CreatedAt:    now,
-			UpdatedAt:    now,
-		},
-		{
-			ID:           uuid.NewString(),
-			Name:         "Business",
-			Slug:         "business",
-			Description:  "Para agencias y empresas serias.",
-			PriceMonthly: 97,
-			PriceYearly:  899,
-			Features:     `["Bots altos o ilimitados","CRM/funnel avanzado","Administrador de grupos","Anuncios IA avanzados","Automatizaciones de seguimiento","Branding personalizado","Soporte prioritario"]`,
-			IsFree:       false,
-			IsActive:     true,
-			SortOrder:    4,
-			CreatedAt:    now,
-			UpdatedAt:    now,
-		},
-	}
+	{
+		ID:           uuid.NewString(),
+		Name:         "Free",
+		Slug:         "free",
+		Description:  "Ideal para probar la plataforma.",
+		PriceMonthly: 0,
+		PriceYearly:  0,
+
+		Features: `[
+			"1 bot WhatsApp",
+			"1 landing page",
+			"1 funnel básico",
+			"100 leads activos",
+			"IA limitada",
+			"Plantillas básicas",
+			"Branding Worktic",
+			"Soporte básico"
+		]`,
+
+		Permissions: `{
+			"whatsapp_ai": true,
+			"landings": true,
+			"funnels": true,
+			"social_ai": true,
+			"video_ai": false,
+			"ads_ai": false,
+			"groups_ai": false,
+			"assistant_ai": false,
+			"academy_ai": false,
+			"marketplace": false
+		}`,
+
+		Limits: `{
+			"bots": 1,
+			"users": 1,
+			"landing_pages": 1,
+			"funnels": 1,
+			"templates": 5,
+			"social_posts_month": 20,
+			"ai_images_month": 10,
+			"ai_videos_month": 0,
+			"ads_campaigns_month": 0,
+			"group_bots": 0,
+			"academy_courses": 0,
+			"storage_mb": 500
+		}`,
+
+		GraceDays: 1,
+
+		IsFree:    true,
+		IsActive:  true,
+		SortOrder: 1,
+		CreatedAt: now,
+		UpdatedAt: now,
+	},
+
+	{
+		ID:           uuid.NewString(),
+		Name:         "Starter",
+		Slug:         "starter",
+		Description:  "Para negocios que están empezando.",
+		PriceMonthly: 7,
+		PriceYearly:  77,
+
+		Features: `[
+			"1 bot WhatsApp",
+			"3 landing pages",
+			"1 funnel completo",
+			"IA de atención y ventas",
+			"Publicaciones básicas",
+			"Métricas básicas",
+			"1 usuario"
+		]`,
+
+		Permissions: `{
+			"whatsapp_ai": true,
+			"landings": true,
+			"funnels": true,
+			"social_ai": true,
+			"video_ai": true,
+			"ads_ai": false,
+			"groups_ai": false,
+			"assistant_ai": true,
+			"academy_ai": false,
+			"marketplace": true
+		}`,
+
+		Limits: `{
+			"bots": 1,
+			"users": 1,
+			"landing_pages": 3,
+			"funnels": 3,
+			"templates": 20,
+			"social_posts_month": 200,
+			"ai_images_month": 100,
+			"ai_videos_month": 20,
+			"ads_campaigns_month": 5,
+			"group_bots": 0,
+			"academy_courses": 2,
+			"storage_mb": 2048
+		}`,
+
+		GraceDays: 2,
+
+		IsFree:    false,
+		IsActive:  true,
+		SortOrder: 2,
+		CreatedAt: now,
+		UpdatedAt: now,
+	},
+
+	{
+		ID:           uuid.NewString(),
+		Name:         "Pro",
+		Slug:         "pro",
+		Description:  "El plan principal para marketers y pymes.",
+		PriceMonthly: 27,
+		PriceYearly:  277,
+
+		Features: `[
+			"Hasta 5 bots",
+			"Funnels ilimitados",
+			"Landing pages ilimitadas",
+			"IA avanzada",
+			"Automatización inteligente",
+			"Programación de contenido",
+			"Métricas de leads y conversiones",
+			"Hasta 3 usuarios"
+		]`,
+
+		Permissions: `{
+			"whatsapp_ai": true,
+			"landings": true,
+			"funnels": true,
+			"social_ai": true,
+			"video_ai": true,
+			"ads_ai": true,
+			"groups_ai": true,
+			"assistant_ai": true,
+			"academy_ai": true,
+			"marketplace": true
+		}`,
+
+		Limits: `{
+			"bots": 5,
+			"users": 3,
+			"landing_pages": 100,
+			"funnels": 50,
+			"templates": 100,
+			"social_posts_month": 5000,
+			"ai_images_month": 1000,
+			"ai_videos_month": 500,
+			"ads_campaigns_month": 100,
+			"group_bots": 10,
+			"academy_courses": 20,
+			"storage_mb": 10240
+		}`,
+
+		GraceDays: 3,
+
+		IsFree:    false,
+		IsActive:  true,
+		SortOrder: 3,
+		CreatedAt: now,
+		UpdatedAt: now,
+	},
+
+	{
+		ID:           uuid.NewString(),
+		Name:         "Business",
+		Slug:         "business",
+		Description:  "Para agencias y empresas serias.",
+		PriceMonthly: 97,
+		PriceYearly:  899,
+
+		Features: `[
+			"Bots altos o ilimitados",
+			"CRM/funnel avanzado",
+			"Administrador de grupos",
+			"Anuncios IA avanzados",
+			"Automatizaciones de seguimiento",
+			"Branding personalizado",
+			"Soporte prioritario"
+		]`,
+
+		Permissions: `{
+			"whatsapp_ai": true,
+			"landings": true,
+			"funnels": true,
+			"social_ai": true,
+			"video_ai": true,
+			"ads_ai": true,
+			"groups_ai": true,
+			"assistant_ai": true,
+			"academy_ai": true,
+			"marketplace": true,
+			"white_label": true
+		}`,
+
+		Limits: `{
+			"bots": 999,
+			"users": 999,
+			"landing_pages": 999,
+			"funnels": 999,
+			"templates": 999,
+			"social_posts_month": 999999,
+			"ai_images_month": 999999,
+			"ai_videos_month": 999999,
+			"ads_campaigns_month": 999999,
+			"group_bots": 999,
+			"academy_courses": 999,
+			"storage_mb": 102400
+		}`,
+
+		GraceDays: 5,
+
+		IsFree:    false,
+		IsActive:  true,
+		SortOrder: 4,
+		CreatedAt: now,
+		UpdatedAt: now,
+	},
+}
 
 	for _, p := range defaultPlans {
-		_, err := b.DB.Exec(`
-			INSERT OR IGNORE INTO plans
-			(id, name, slug, description, price_monthly, price_yearly, features, is_free, is_active, sort_order, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`, p.ID, p.Name, p.Slug, p.Description, p.PriceMonthly, p.PriceYearly, p.Features, boolToInt(p.IsFree), boolToInt(p.IsActive), p.SortOrder, p.CreatedAt, p.UpdatedAt)
-		if err != nil {
-			return err
-		}
+
+	if p.Features == "" {
+		p.Features = "[]"
+	}
+
+	if p.Permissions == "" {
+		p.Permissions = "{}"
+	}
+
+	if p.Limits == "" {
+		p.Limits = "{}"
+	}
+
+	if p.GraceDays <= 0 {
+		p.GraceDays = 1
 	}
 
 	_, err := b.DB.Exec(`
-		INSERT OR IGNORE INTO plan_config
-		(id, usdt_bep20_wallet, card_payments_enabled, default_free_plan_slug, require_plan_selection, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, "main", "", 0, "free", 1, now)
+		INSERT OR IGNORE INTO plans (
+			id,
+			name,
+			slug,
+			description,
+			price_monthly,
+			price_yearly,
+			features,
+			permissions,
+			limits,
+			grace_days,
+			is_free,
+			is_active,
+			sort_order,
+			created_at,
+			updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		p.ID,
+		p.Name,
+		p.Slug,
+		p.Description,
+		p.PriceMonthly,
+		p.PriceYearly,
+		p.Features,
+		p.Permissions,
+		p.Limits,
+		p.GraceDays,
+		boolToInt(p.IsFree),
+		boolToInt(p.IsActive),
+		p.SortOrder,
+		p.CreatedAt,
+		p.UpdatedAt,
+	)
 
-	return err
+	if err != nil {
+		return err
+	}
+}
+
+_, err := b.DB.Exec(`
+	INSERT OR IGNORE INTO plan_config (
+		id,
+		usdt_bep20_wallet,
+		card_payments_enabled,
+		default_free_plan_slug,
+		require_plan_selection,
+		updated_at
+	)
+	VALUES (?, ?, ?, ?, ?, ?)
+`,
+	"main",
+	"",
+	0,
+	"free",
+	1,
+	now,
+)
+
+return err
 }
 
 func (b *BillingService) ListPlans() ([]models.Plan, error) {
 	rows, err := b.DB.Query(`
-		SELECT id, name, slug, description, price_monthly, price_yearly, features, is_free, is_active, sort_order, created_at, updated_at
+		SELECT id, name, slug, description, price_monthly, price_yearly, features, permissions, limits, grace_days, is_free, is_active, sort_order, created_at, updated_at
 		FROM plans
 		WHERE is_active=1
 		ORDER BY sort_order ASC
@@ -115,7 +343,23 @@ func (b *BillingService) ListPlans() ([]models.Plan, error) {
 	for rows.Next() {
 		var p models.Plan
 		var isFree, isActive int
-		if err := rows.Scan(&p.ID, &p.Name, &p.Slug, &p.Description, &p.PriceMonthly, &p.PriceYearly, &p.Features, &isFree, &isActive, &p.SortOrder, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		if err := rows.Scan(
+			&p.ID,
+			&p.Name,
+			&p.Slug,
+			&p.Description,
+			&p.PriceMonthly,
+			&p.PriceYearly,
+			&p.Features,
+			&p.Permissions,
+			&p.Limits,
+			&p.GraceDays,
+			&isFree,
+			&isActive,
+			&p.SortOrder,
+			&p.CreatedAt,
+			&p.UpdatedAt,
+		); err != nil {
 			return nil, err
 		}
 		p.IsFree = isFree == 1
@@ -128,12 +372,47 @@ func (b *BillingService) ListPlans() ([]models.Plan, error) {
 func (b *BillingService) GetPlanBySlug(slug string) (models.Plan, error) {
 	var p models.Plan
 	var isFree, isActive int
+
 	err := b.DB.QueryRow(`
-		SELECT id, name, slug, description, price_monthly, price_yearly, features, is_free, is_active, sort_order, created_at, updated_at
-		FROM plans WHERE slug=?
-	`, slug).Scan(&p.ID, &p.Name, &p.Slug, &p.Description, &p.PriceMonthly, &p.PriceYearly, &p.Features, &isFree, &isActive, &p.SortOrder, &p.CreatedAt, &p.UpdatedAt)
+		SELECT
+			id,
+			name,
+			slug,
+			description,
+			price_monthly,
+			price_yearly,
+			features,
+			permissions,
+			limits,
+			grace_days,
+			is_free,
+			is_active,
+			sort_order,
+			created_at,
+			updated_at
+		FROM plans
+		WHERE slug=?
+	`, slug).Scan(
+		&p.ID,
+		&p.Name,
+		&p.Slug,
+		&p.Description,
+		&p.PriceMonthly,
+		&p.PriceYearly,
+		&p.Features,
+		&p.Permissions,
+		&p.Limits,
+		&p.GraceDays,
+		&isFree,
+		&isActive,
+		&p.SortOrder,
+		&p.CreatedAt,
+		&p.UpdatedAt,
+	)
+
 	p.IsFree = isFree == 1
 	p.IsActive = isActive == 1
+
 	return p, err
 }
 
@@ -295,4 +574,105 @@ func boolToInt(v bool) int {
 func EncodeFeatures(v any) string {
 	b, _ := json.Marshal(v)
 	return string(b)
+}
+
+func (b *BillingService) CreatePlan(p models.Plan) (models.Plan, error) {
+	now := time.Now()
+
+	if p.ID == "" {
+		p.ID = uuid.NewString()
+	}
+
+	if p.Features == "" {
+		p.Features = "[]"
+	}
+
+	if p.Permissions == "" {
+		p.Permissions = "{}"
+	}
+
+	if p.Limits == "" {
+		p.Limits = "{}"
+	}
+
+	if p.GraceDays <= 0 {
+		p.GraceDays = 1
+	}
+
+	p.CreatedAt = now
+	p.UpdatedAt = now
+
+	_, err := b.DB.Exec(`
+		INSERT INTO plans (
+			id, name, slug, description, price_monthly, price_yearly,
+			features, permissions, limits, grace_days,
+			is_free, is_active, sort_order, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		p.ID,
+		p.Name,
+		p.Slug,
+		p.Description,
+		p.PriceMonthly,
+		p.PriceYearly,
+		p.Features,
+		p.Permissions,
+		p.Limits,
+		p.GraceDays,
+		boolToInt(p.IsFree),
+		boolToInt(p.IsActive),
+		p.SortOrder,
+		p.CreatedAt,
+		p.UpdatedAt,
+	)
+
+	return p, err
+}
+
+func (b *BillingService) UpdatePlan(p models.Plan) error {
+	if p.Features == "" {
+		p.Features = "[]"
+	}
+
+	if p.Permissions == "" {
+		p.Permissions = "{}"
+	}
+
+	if p.Limits == "" {
+		p.Limits = "{}"
+	}
+
+	if p.GraceDays <= 0 {
+		p.GraceDays = 1
+	}
+
+	_, err := b.DB.Exec(`
+		UPDATE plans
+		SET name=?, slug=?, description=?, price_monthly=?, price_yearly=?,
+			features=?, permissions=?, limits=?, grace_days=?,
+			is_free=?, is_active=?, sort_order=?, updated_at=?
+		WHERE id=?
+	`,
+		p.Name,
+		p.Slug,
+		p.Description,
+		p.PriceMonthly,
+		p.PriceYearly,
+		p.Features,
+		p.Permissions,
+		p.Limits,
+		p.GraceDays,
+		boolToInt(p.IsFree),
+		boolToInt(p.IsActive),
+		p.SortOrder,
+		time.Now(),
+		p.ID,
+	)
+
+	return err
+}
+
+func (b *BillingService) DeletePlan(id string) error {
+	_, err := b.DB.Exec(`UPDATE plans SET is_active=0, updated_at=? WHERE id=?`, time.Now(), id)
+	return err
 }

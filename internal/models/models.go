@@ -263,6 +263,9 @@ type Plan struct {
 	PriceMonthly    float64   `json:"price_monthly"`
 	PriceYearly     float64   `json:"price_yearly"`
 	Features        string    `json:"features"` // JSON string
+	Permissions string `json:"permissions"`
+	Limits      string `json:"limits"`
+	GraceDays   int    `json:"grace_days"`
 	IsFree          bool      `json:"is_free"`
 	IsActive        bool      `json:"is_active"`
 	SortOrder       int       `json:"sort_order"`

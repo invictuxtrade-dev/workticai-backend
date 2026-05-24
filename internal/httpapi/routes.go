@@ -126,6 +126,9 @@ func (s *Server) routes() {
 	
 
 	secured.HandleFunc("/plans", s.handlePlans).Methods("GET", "OPTIONS")
+	secured.HandleFunc("/plans", requireRole("admin")(s.handleCreatePlan)).Methods("POST", "OPTIONS")
+	secured.HandleFunc("/plans/{id}", requireRole("admin")(s.handleUpdatePlan)).Methods("PUT", "OPTIONS")
+	secured.HandleFunc("/plans/{id}", requireRole("admin")(s.handleDeletePlan)).Methods("DELETE", "OPTIONS")
 	secured.HandleFunc("/billing/config", requireRole("admin")(s.handleGetBillingConfig)).Methods("GET", "OPTIONS")
 	secured.HandleFunc("/billing/config", requireRole("admin")(s.handleUpdateBillingConfig)).Methods("PUT", "OPTIONS")
 	secured.HandleFunc("/subscriptions/current", s.handleCurrentSubscription).Methods("GET", "OPTIONS")
@@ -1609,6 +1612,54 @@ func (s *Server) handlePlans(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, plans)
+}
+
+func (s *Server) handleCreatePlan(w http.ResponseWriter, r *http.Request) {
+	var p models.Plan
+
+	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+
+	plan, err := s.Billing.CreatePlan(p)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, plan)
+}
+
+func (s *Server) handleUpdatePlan(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+
+	var p models.Plan
+
+	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+
+	p.ID = id
+
+	if err := s.Billing.UpdatePlan(p); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"success": true})
+}
+
+func (s *Server) handleDeletePlan(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+
+	if err := s.Billing.DeletePlan(id); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"success": true})
 }
 
 func (s *Server) handleGetBillingConfig(w http.ResponseWriter, r *http.Request) {

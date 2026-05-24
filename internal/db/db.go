@@ -72,6 +72,9 @@ func Open(path string) (*sql.DB, error) {
 	`ALTER TABLE social_posts ADD COLUMN published_at TIMESTAMP NULL`,
 
 	`ALTER TABLE clients ADD COLUMN plan TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE plans ADD COLUMN permissions TEXT NOT NULL DEFAULT '{}'`,
+	`ALTER TABLE plans ADD COLUMN limits TEXT NOT NULL DEFAULT '{}'`,
+	`ALTER TABLE plans ADD COLUMN grace_days INTEGER NOT NULL DEFAULT 1`,
 	`ALTER TABLE ads_campaigns ADD COLUMN bot_id TEXT DEFAULT ''`,
 	`ALTER TABLE ads_campaigns ADD COLUMN landing_id TEXT DEFAULT ''`,
 	`ALTER TABLE ads_campaigns ADD COLUMN ecosystem_status TEXT DEFAULT 'draft'`,
@@ -91,6 +94,7 @@ func Open(path string) (*sql.DB, error) {
 	`ALTER TABLE social_credentials ADD COLUMN tiktok_access_token TEXT DEFAULT ''`,
 	`ALTER TABLE social_credentials ADD COLUMN tiktok_open_id TEXT DEFAULT ''`,
 	`ALTER TABLE social_credentials ADD COLUMN tiktok_connected INTEGER DEFAULT 0`,
+	
 }
 
 	for _, q := range softMigrations {
@@ -133,7 +137,7 @@ func migrate(db *sql.DB) error {
 			updated_at TIMESTAMP NOT NULL
 		);`,
 
-			`CREATE TABLE IF NOT EXISTS plans (
+		`CREATE TABLE IF NOT EXISTS plans (
 		id TEXT PRIMARY KEY,
 		name TEXT NOT NULL,
 		slug TEXT NOT NULL UNIQUE,
@@ -141,6 +145,9 @@ func migrate(db *sql.DB) error {
 		price_monthly REAL NOT NULL DEFAULT 0,
 		price_yearly REAL NOT NULL DEFAULT 0,
 		features TEXT NOT NULL DEFAULT '[]',
+		permissions TEXT NOT NULL DEFAULT '{}',
+		limits TEXT NOT NULL DEFAULT '{}',
+		grace_days INTEGER NOT NULL DEFAULT 1,
 		is_free INTEGER NOT NULL DEFAULT 0,
 		is_active INTEGER NOT NULL DEFAULT 1,
 		sort_order INTEGER NOT NULL DEFAULT 0,
