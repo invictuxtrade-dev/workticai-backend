@@ -391,6 +391,14 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
+	current := currentUser(r)
+
+	if current.ID == mux.Vars(r)["id"] {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": "no puedes eliminar tu propio usuario",
+		})
+		return
+	}
 	if err := s.Auth.DeleteUser(mux.Vars(r)["id"]); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
@@ -2675,7 +2683,14 @@ func (s *Server) handleAssistantChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msg, err := s.Assistant.Chat(r.Context(), clientID, u.Name, body.Message)
+	msg, err := s.Assistant.Chat(
+	r.Context(),
+	clientID,
+	u.Name,
+	u.Role,
+	u.Plan,
+	body.Message,
+	)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return

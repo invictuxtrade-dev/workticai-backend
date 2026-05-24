@@ -38,12 +38,43 @@ func (a *AuthService) CreateUser(clientID, name, email, password, role string) (
 }
 
 func (a *AuthService) Login(email, password string) (models.User, string, error) {
-	var id, clientID, name, hash, role, status string
+	var id, clientID, name, hash, role, plan, status string
 	var created time.Time
-	err := a.DB.QueryRow(`SELECT id, client_id, name, password_hash, role, status, created_at FROM users WHERE email=?`, email).Scan(&id, &clientID, &name, &hash, &role, &status, &created)
+	err := a.DB.QueryRow(`
+		SELECT
+			u.id,
+			u.client_id,
+			u.name,
+			u.password_hash,
+			u.role,
+			COALESCE(c.plan, 'free'),
+			u.status,
+			u.created_at
+		FROM users u
+		LEFT JOIN clients c ON c.id = u.client_id
+		WHERE u.email=?
+	`, email).Scan(
+		&id,
+		&clientID,
+		&name,
+		&hash,
+		&role,
+		&plan,
+		&status,
+		&created,
+	)
 	if err != nil { return models.User{}, "", err }
 	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) != nil { return models.User{}, "", errors.New("invalid credentials") }
-	user := models.User{ID:id, ClientID:clientID, Name:name, Email:email, Role:role, Status:status, CreatedAt:created}
+	user := models.User{
+	ID: id,
+	ClientID: clientID,
+	Name: name,
+	Email: email,
+	Role: role,
+	Plan: plan,
+	Status: status,
+	CreatedAt: created,
+	}
 	token, err := a.createSession(id); return user, token, err
 }
 
@@ -55,7 +86,29 @@ func (a *AuthService) createSession(userID string) (string, error) {
 
 func (a *AuthService) GetUser(id string) (models.User, error) {
 	var u models.User
-	err := a.DB.QueryRow(`SELECT id, client_id, name, email, role, status, created_at FROM users WHERE id=?`, id).Scan(&u.ID, &u.ClientID, &u.Name, &u.Email, &u.Role, &u.Status, &u.CreatedAt)
+	err := a.DB.QueryRow(`
+		SELECT
+			u.id,
+			u.client_id,
+			u.name,
+			u.email,
+			u.role,
+			COALESCE(c.plan, 'free'),
+			u.status,
+			u.created_at
+		FROM users u
+		LEFT JOIN clients c ON c.id = u.client_id
+		WHERE u.id=?
+	`, id).Scan(
+		&u.ID,
+		&u.ClientID,
+		&u.Name,
+		&u.Email,
+		&u.Role,
+		&u.Plan,
+		&u.Status,
+		&u.CreatedAt,
+	)
 	return u, err
 }
 
@@ -68,14 +121,34 @@ func (a *AuthService) GetUserByToken(token string) (models.User, error) {
 }
 
 func (a *AuthService) ListUsers(clientID string) ([]models.User, error) {
-	query := `SELECT id, client_id, name, email, role, status, created_at FROM users`
+	query := `
+	SELECT
+		u.id,
+		u.client_id,
+		u.name,
+		u.email,
+		u.role,
+		COALESCE(c.plan, 'free'),
+		u.status,
+		u.created_at
+	FROM users u
+	LEFT JOIN clients c ON c.id = u.client_id`
 	args := []any{}
 	if clientID != "" { query += ` WHERE client_id=?`; args = append(args, clientID) }
 	query += ` ORDER BY created_at DESC`
 	rows, err := a.DB.Query(query, args...); if err != nil { return nil, err }
 	defer rows.Close()
 	out := []models.User{}
-	for rows.Next() { var u models.User; if err := rows.Scan(&u.ID,&u.ClientID,&u.Name,&u.Email,&u.Role,&u.Status,&u.CreatedAt); err != nil { return nil, err }; out = append(out,u) }
+	for rows.Next() { var u models.User; if err := rows.Scan(
+	&u.ID,
+	&u.ClientID,
+	&u.Name,
+	&u.Email,
+	&u.Role,
+	&u.Plan,
+	&u.Status,
+	&u.CreatedAt,
+); err != nil { return nil, err }; out = append(out,u) }
 	return out,nil
 }
 
