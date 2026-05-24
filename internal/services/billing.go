@@ -4,6 +4,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"time"
+	"errors"
+	"strings"
+	"fmt"
 
 	"github.com/google/uuid"
 	"whatsapp-sales-os-enterprise/backend/internal/models"
@@ -13,8 +16,221 @@ type BillingService struct {
 	DB *sql.DB
 }
 
+type PlanLimits map[string]int
+type PlanPermissions map[string]bool
+
 func NewBillingService(db *sql.DB) *BillingService {
 	return &BillingService{DB: db}
+}
+
+func (b *BillingService) GetClientPlan(clientID string) (models.Plan, error) {
+	var p models.Plan
+	var isFree, isActive int
+
+	var slug string
+
+	err := b.DB.QueryRow(`
+		SELECT COALESCE(plan, 'free')
+		FROM clients
+		WHERE id=?
+	`, clientID).Scan(&slug)
+
+	if err != nil {
+		return p, err
+	}
+
+	err = b.DB.QueryRow(`
+		SELECT
+			id,
+			name,
+			slug,
+			description,
+			price_monthly,
+			price_yearly,
+			features,
+			permissions,
+			limits,
+			grace_days,
+			is_free,
+			is_active,
+			sort_order,
+			created_at,
+			updated_at
+		FROM plans
+		WHERE slug=?
+		LIMIT 1
+	`, slug).Scan(
+		&p.ID,
+		&p.Name,
+		&p.Slug,
+		&p.Description,
+		&p.PriceMonthly,
+		&p.PriceYearly,
+		&p.Features,
+		&p.Permissions,
+		&p.Limits,
+		&p.GraceDays,
+		&isFree,
+		&isActive,
+		&p.SortOrder,
+		&p.CreatedAt,
+		&p.UpdatedAt,
+	)
+   
+	p.IsFree = isFree == 1
+    p.IsActive = isActive == 1
+	return p, err
+}
+
+func parsePlanLimits(raw string) PlanLimits {
+	out := PlanLimits{}
+
+	_ = json.Unmarshal([]byte(raw), &out)
+
+	return out
+}
+
+func parsePlanPermissions(raw string) PlanPermissions {
+	out := PlanPermissions{}
+
+	_ = json.Unmarshal([]byte(raw), &out)
+
+	return out
+}
+
+func (b *BillingService) HasFeature(
+	role string,
+	clientID string,
+	feature string,
+) bool {
+
+	if strings.TrimSpace(role) == "admin" {
+		return true
+	}
+
+	plan, err := b.GetClientPlan(clientID)
+	if err != nil {
+		return false
+	}
+
+	perms := parsePlanPermissions(plan.Permissions)
+
+	return perms[feature]
+}
+
+func (b *BillingService) GetLimit(
+	clientID string,
+	metric string,
+) int {
+
+	plan, err := b.GetClientPlan(clientID)
+	if err != nil {
+		return 0
+	}
+
+	limits := parsePlanLimits(plan.Limits)
+
+	return limits[metric]
+}
+
+func (b *BillingService) GetMonthlyUsage(
+	clientID string,
+	metric string,
+) (int, error) {
+
+	period := time.Now().Format("2006-01")
+
+	var used int
+
+	err := b.DB.QueryRow(`
+		SELECT COALESCE(used,0)
+		FROM usage_stats
+		WHERE client_id=?
+		AND metric=?
+		AND period=?
+		LIMIT 1
+	`,
+		clientID,
+		metric,
+		period,
+	).Scan(&used)
+
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
+
+	return used, err
+}
+
+func (b *BillingService) IncrementUsage(
+	clientID string,
+	metric string,
+	amount int,
+) error {
+
+	period := time.Now().Format("2006-01")
+	now := time.Now()
+
+	_, err := b.DB.Exec(`
+		INSERT INTO usage_stats (
+			id,
+			client_id,
+			metric,
+			used,
+			period,
+			created_at,
+			updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(client_id, metric, period)
+		DO UPDATE SET
+			used = used + excluded.used,
+			updated_at = excluded.updated_at
+	`,
+		uuid.NewString(),
+		clientID,
+		metric,
+		amount,
+		period,
+		now,
+		now,
+	)
+
+	return err
+}	
+
+func (b *BillingService) CheckLimit(
+	role string,
+	clientID string,
+	metric string,
+) error {
+
+	if role == "admin" {
+		return nil
+	}
+
+    if strings.TrimSpace(clientID) == "" {
+	return errors.New("client id required for plan validation")
+	}
+	limit := b.GetLimit(clientID, metric)
+
+	if limit <= 0 {
+		return errors.New("feature not available")
+	}
+
+	used, err := b.GetMonthlyUsage(clientID, metric)
+	if err != nil {
+		return err
+	}
+
+	if used >= limit {
+		return fmt.Errorf(
+			"monthly limit reached for %s",
+			metric,
+		)
+	}
+
+	return nil
 }
 
 func (b *BillingService) SeedDefaults() error {

@@ -36,6 +36,7 @@ type BotManager struct {
 	AI      *AIService
 	Landing *LandingService
 	Funnel  *FunnelService
+	Billing *BillingService
 	BotsDir string
 
 	mu       sync.Mutex
@@ -46,12 +47,13 @@ func NewBotManager(db *sql.DB, ai *AIService, botsDir string) *BotManager {
 	_ = os.MkdirAll(botsDir, 0o755)
 
 	return &BotManager{
-		DB:       db,
-		AI:       ai,
-		Landing:  NewLandingService(ai),
-		Funnel:   nil,
-		BotsDir:  botsDir,
-		runtimes: map[string]*BotRuntime{},
+	DB:       db,
+	AI:       ai,
+	Landing:  NewLandingService(ai),
+	Funnel:   nil,
+	Billing:  NewBillingService(db),
+	BotsDir:  botsDir,
+	runtimes: map[string]*BotRuntime{},
 	}
 }
 
@@ -265,9 +267,15 @@ func (m *BotManager) DeleteBot(id string) error {
 	return err
 }
 
-func (m *BotManager) CreateBot(clientID, name string) (models.Bot, error) {
+func (m *BotManager) CreateBot(role, clientID, name string) (models.Bot, error) {
 	if strings.TrimSpace(clientID) == "" {
 		return models.Bot{}, errors.New("client_id required")
+	}
+
+	if m.Billing != nil {
+	if err := m.Billing.CheckLimit(role, clientID, "bots"); err != nil {
+		return models.Bot{}, err
+	}
 	}
 
 	now := time.Now()
@@ -289,6 +297,10 @@ func (m *BotManager) CreateBot(clientID, name string) (models.Bot, error) {
 	)
 	if err != nil {
 		return models.Bot{}, err
+	}
+
+	if m.Billing != nil && role != "admin" {
+	_ = m.Billing.IncrementUsage(clientID, "bots", 1)
 	}
 
 	_, _ = m.UpsertBotConfig(models.BotConfig{

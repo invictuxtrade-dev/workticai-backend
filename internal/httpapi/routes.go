@@ -123,7 +123,6 @@ func (s *Server) routes() {
 	secured.HandleFunc("/social/instagram/verify", s.handleVerifyInstagram).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/social/instagram/data", s.handleInstagramData).Methods("GET", "OPTIONS")
 	secured.HandleFunc("/social/publish-multi", s.handlePublishMulti).Methods("POST", "OPTIONS")
-	
 
 	secured.HandleFunc("/plans", s.handlePlans).Methods("GET", "OPTIONS")
 	secured.HandleFunc("/plans", requireRole("admin")(s.handleCreatePlan)).Methods("POST", "OPTIONS")
@@ -166,7 +165,7 @@ func (s *Server) routes() {
 	secured.HandleFunc("/assistant/messages", s.handleAssistantMessages).Methods("GET", "OPTIONS")
 	secured.HandleFunc("/assistant/messages", s.handleClearAssistantMessages).Methods("DELETE", "OPTIONS")
 	secured.HandleFunc("/assistant/chat", s.handleAssistantChat).Methods("POST", "OPTIONS")
-	}
+}
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -333,12 +332,23 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if err := s.Billing.CheckLimit(u.Role, body.ClientID, "users"); err != nil {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": err.Error()})
+		return
+	}
+
 	user, _, err := s.Auth.CreateUser(body.ClientID, body.Name, body.Email, body.Password, body.Role)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
+
+	if u.Role != "admin" {
+		_ = s.Billing.IncrementUsage(body.ClientID, "users", 1)
+	}
+
 	writeJSON(w, http.StatusCreated, user)
+
 }
 
 func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
@@ -434,11 +444,21 @@ func (s *Server) handleCreateTemplate(w http.ResponseWriter, r *http.Request) {
 		t.ClientID = u.ClientID
 	}
 
+	if err := s.Billing.CheckLimit(u.Role, t.ClientID, "templates"); err != nil {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": err.Error()})
+		return
+	}
+
 	item, err := s.Templates.Create(t)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
+
+	if u.Role != "admin" {
+		_ = s.Billing.IncrementUsage(t.ClientID, "templates", 1)
+	}
+
 	writeJSON(w, http.StatusCreated, item)
 }
 
@@ -508,7 +528,7 @@ func (s *Server) handleCreateBot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bot, err := s.Manager.CreateBot(body.ClientID, body.Name)
+	bot, err := s.Manager.CreateBot(u.Role, body.ClientID, body.Name)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
@@ -676,6 +696,11 @@ func (s *Server) handleCreateLanding(w http.ResponseWriter, r *http.Request) {
 		lp.TrackingMode = "auto"
 	}
 
+	if err := s.Billing.CheckLimit(u.Role, lp.ClientID, "landing_pages"); err != nil {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": err.Error()})
+		return
+	}
+
 	now := time.Now()
 	lp.ID = uuid.NewString()
 	lp.CreatedAt = now
@@ -706,7 +731,9 @@ func (s *Server) handleCreateLanding(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
-
+	if u.Role != "admin" {
+		_ = s.Billing.IncrementUsage(lp.ClientID, "landing_pages", 1)
+	}
 	writeJSON(w, http.StatusCreated, lp)
 }
 
@@ -916,6 +943,12 @@ func (s *Server) handleGenerateLanding(w http.ResponseWriter, r *http.Request) {
 	}
 	lp.UpdatedAt = time.Now()
 
+	// Check limit antes de insertar
+	if err := s.Billing.CheckLimit(u.Role, lp.ClientID, "landing_pages"); err != nil {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": err.Error()})
+		return
+	}
+
 	_, err = s.DB.Exec(`
 		INSERT INTO landing_pages (
 			id, client_id, bot_id, name, prompt, status,
@@ -940,6 +973,11 @@ func (s *Server) handleGenerateLanding(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
+	}
+
+	// Incrementar uso si no es admin
+	if u.Role != "admin" {
+		_ = s.Billing.IncrementUsage(lp.ClientID, "landing_pages", 1)
 	}
 
 	writeJSON(w, http.StatusOK, lp)
@@ -1252,23 +1290,20 @@ func (s *Server) handleGetSocialCredentials(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// 🔥 AQUÍ VIENE LO QUE TE FALTABA
 	igID, igUser, _ := s.Social.GetInstagramFromPage(c.AccessToken, c.PageID)
 
 	resp := map[string]any{
-		"id": c.ID,
-		"client_id": c.ClientID,
-		"platform": c.Platform,
-		"access_token": c.AccessToken,
-		"page_id": c.PageID,
-		"page_name": c.PageName,
-		"enabled": c.Enabled,
-		"ad_account_id": c.AdAccountID,
-
-		// 🔥 ESTO ES LO CLAVE
-		"instagram_connected": igID != "",
-		"instagram_id": igID,
-		"instagram_username": igUser,
+		"id":                   c.ID,
+		"client_id":            c.ClientID,
+		"platform":             c.Platform,
+		"access_token":         c.AccessToken,
+		"page_id":              c.PageID,
+		"page_name":            c.PageName,
+		"enabled":              c.Enabled,
+		"ad_account_id":        c.AdAccountID,
+		"instagram_connected":  igID != "",
+		"instagram_id":         igID,
+		"instagram_username":   igUser,
 	}
 
 	writeJSON(w, http.StatusOK, resp)
@@ -1347,6 +1382,12 @@ func (s *Server) handlePublishSocialNow(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
+	// Check limit antes de crear el post
+	if err := s.Billing.CheckLimit(u.Role, clientID, "social_posts_month"); err != nil {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": err.Error()})
+		return
+	}
+
 	platform := strings.TrimSpace(strings.ToLower(body.Platform))
 	if platform == "" {
 		platform = "facebook"
@@ -1375,6 +1416,11 @@ func (s *Server) handlePublishSocialNow(w http.ResponseWriter, r *http.Request) 
 	if err := s.Social.PublishNow(r.Context(), post.ID); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error(), "post_id": post.ID})
 		return
+	}
+
+	// Incrementar uso si no es admin
+	if u.Role != "admin" {
+		_ = s.Billing.IncrementUsage(clientID, "social_posts_month", 1)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "post_id": post.ID})
@@ -1412,6 +1458,12 @@ func (s *Server) handleScheduleSocialPost(w http.ResponseWriter, r *http.Request
 		if clientID == "" {
 			clientID = u.ClientID
 		}
+	}
+
+	// Check limit antes de crear el post
+	if err := s.Billing.CheckLimit(u.Role, clientID, "social_posts_month"); err != nil {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": err.Error()})
+		return
 	}
 
 	platform := strings.TrimSpace(strings.ToLower(body.Platform))
@@ -1456,6 +1508,11 @@ func (s *Server) handleScheduleSocialPost(w http.ResponseWriter, r *http.Request
 
 	_, _ = s.DB.Exec(`UPDATE social_posts SET status='scheduled' WHERE id=?`, post.ID)
 
+	// Incrementar uso si no es admin
+	if u.Role != "admin" {
+		_ = s.Billing.IncrementUsage(clientID, "social_posts_month", 1)
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "post_id": post.ID})
 }
 
@@ -1490,6 +1547,17 @@ func (s *Server) handleSocialLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSocialGenerateImage(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+
+	clientID := r.URL.Query().Get("client_id")
+	if u.Role != "admin" {
+		clientID = u.ClientID
+	}
+	if strings.TrimSpace(clientID) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "client_id required"})
+		return
+	}
+
 	var body struct {
 		Prompt string `json:"prompt"`
 	}
@@ -1499,10 +1567,21 @@ func (s *Server) handleSocialGenerateImage(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Check limit antes de generar imagen
+	if err := s.Billing.CheckLimit(u.Role, clientID, "ai_images_month"); err != nil {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": err.Error()})
+		return
+	}
+
 	url, err := s.Social.GenerateImage(r.Context(), body.Prompt)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
+	}
+
+	// Incrementar uso si no es admin
+	if u.Role != "admin" {
+		_ = s.Billing.IncrementUsage(clientID, "ai_images_month", 1)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"image_url": url})
@@ -1592,14 +1671,12 @@ func (s *Server) handleRegisterClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 1) crear cliente
 	client, err := s.Manager.CreateClient(body.CompanyName, body.Email, body.Phone, "")
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
 	}
 
-	// 2) crear usuario principal del cliente
 	user, token, err := s.Auth.CreateUser(client.ID, body.Name, body.Email, body.Password, "client_admin")
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
@@ -1830,6 +1907,12 @@ func (s *Server) handleGenerateAdsCampaign(w http.ResponseWriter, r *http.Reques
 		clientID = r.URL.Query().Get("client_id")
 	}
 
+	// Check limit antes de generar campaña
+	if err := s.Billing.CheckLimit(u.Role, clientID, "ads_campaigns_month"); err != nil {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": err.Error()})
+		return
+	}
+
 	plan, err := s.Ads.GenerateCampaignPlan(
 		r.Context(),
 		body.BusinessName,
@@ -1852,6 +1935,10 @@ func (s *Server) handleGenerateAdsCampaign(w http.ResponseWriter, r *http.Reques
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 			return
+		}
+		// Incrementar uso si no es admin
+		if u.Role != "admin" {
+			_ = s.Billing.IncrementUsage(clientID, "ads_campaigns_month", 1)
 		}
 	}
 
@@ -1878,12 +1965,23 @@ func (s *Server) handleCreateAdsCampaign(w http.ResponseWriter, r *http.Request)
 		clientID = r.URL.Query().Get("client_id")
 	}
 
+	// Check limit antes de guardar campaña
+	if err := s.Billing.CheckLimit(u.Role, clientID, "ads_campaigns_month"); err != nil {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": err.Error()})
+		return
+	}
+
 	b, _ := json.Marshal(body.Plan)
 
 	id, err := s.Ads.SaveCampaign(clientID, body.Plan, string(b))
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
+	}
+
+	// Incrementar uso si no es admin
+	if u.Role != "admin" {
+		_ = s.Billing.IncrementUsage(clientID, "ads_campaigns_month", 1)
 	}
 
 	writeJSON(w, http.StatusCreated, map[string]any{"id": id})
@@ -1990,20 +2088,20 @@ type AdsCampaignPlan struct {
 	Angles            []string `json:"angles"`
 	PrimaryText       string   `json:"primary_text"`
 	Headline          string   `json:"headline"`
-	Description        string   `json:"description"`
+	Description       string   `json:"description"`
 	CTA               string   `json:"cta"`
-	CreativePrompt     string   `json:"creative_prompt"`
+	CreativePrompt    string   `json:"creative_prompt"`
 	LandingSuggestion string   `json:"landing_suggestion"`
 	WhatsAppScript    string   `json:"whatsapp_script"`
-	BudgetDaily        float64  `json:"budget_daily"`
-	BudgetMonthly      float64  `json:"budget_monthly"`
-	EstimatedReach     int      `json:"estimated_reach"`
-	EstimatedLeads     int      `json:"estimated_leads"`
-	EstimatedCPL       float64  `json:"estimated_cpl"`
-	EstimatedSales     int      `json:"estimated_sales"`
-	EstimatedRevenue   float64  `json:"estimated_revenue"`
-	EstimatedROI       float64  `json:"estimated_roi"`
-	Recommendations    []string `json:"recommendations"`
+	BudgetDaily       float64  `json:"budget_daily"`
+	BudgetMonthly     float64  `json:"budget_monthly"`
+	EstimatedReach    int      `json:"estimated_reach"`
+	EstimatedLeads    int      `json:"estimated_leads"`
+	EstimatedCPL      float64  `json:"estimated_cpl"`
+	EstimatedSales    int      `json:"estimated_sales"`
+	EstimatedRevenue  float64  `json:"estimated_revenue"`
+	EstimatedROI      float64  `json:"estimated_roi"`
+	Recommendations   []string `json:"recommendations"`
 }
 
 func (s *Server) handleCreateAdsEcosystem(w http.ResponseWriter, r *http.Request) {
@@ -2056,6 +2154,22 @@ func (s *Server) handleCreateAdsEcosystem(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// ==============================================
+	// CHECK LIMITS ANTES DE CREAR EL ECOSISTEMA
+	// ==============================================
+	
+	// Check limit para ads_campaigns_month
+	if err := s.Billing.CheckLimit(u.Role, clientID, "ads_campaigns_month"); err != nil {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": err.Error()})
+		return
+	}
+	
+	// Check limit para landing_pages
+	if err := s.Billing.CheckLimit(u.Role, clientID, "landing_pages"); err != nil {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": err.Error()})
+		return
+	}
+
 	// 1) Generar plan de campaña
 	plan, err := s.Ads.GenerateCampaignPlan(
 		r.Context(),
@@ -2072,13 +2186,13 @@ func (s *Server) handleCreateAdsEcosystem(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// 2) Crear bot automático
+	// 2) Crear bot automático (CORREGIDO: pasando u.Role)
 	botName := "Bot - " + plan.Product
 	if strings.TrimSpace(plan.Name) != "" {
 		botName = "Bot - " + plan.Name
 	}
 
-	bot, err := s.Manager.CreateBot(clientID, botName)
+	bot, err := s.Manager.CreateBot(u.Role, clientID, botName)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
@@ -2190,6 +2304,14 @@ func (s *Server) handleCreateAdsEcosystem(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
+	}
+
+	// ==============================================
+	// INCREMENTAR USOS DESPUÉS DE CREACIÓN EXITOSA
+	// ==============================================
+	if u.Role != "admin" {
+		_ = s.Billing.IncrementUsage(clientID, "ads_campaigns_month", 1)
+		_ = s.Billing.IncrementUsage(clientID, "landing_pages", 1)
 	}
 
 	writeJSON(w, http.StatusCreated, map[string]any{
@@ -2317,10 +2439,21 @@ func (s *Server) handleCreateGroupBot(w http.ResponseWriter, r *http.Request) {
 		body.ClientID = u.ClientID
 	}
 
+	// Check limit antes de crear grupo bot
+	if err := s.Billing.CheckLimit(u.Role, body.ClientID, "group_bots"); err != nil {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": err.Error()})
+		return
+	}
+
 	item, err := s.Groups.CreateGroupBot(body)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
+	}
+
+	// Incrementar uso si no es admin
+	if u.Role != "admin" {
+		_ = s.Billing.IncrementUsage(body.ClientID, "group_bots", 1)
 	}
 
 	writeJSON(w, http.StatusCreated, item)
@@ -2506,7 +2639,7 @@ func (s *Server) handleRequestFacebookGroupJoin(w http.ResponseWriter, r *http.R
 	groupID := mux.Vars(r)["id"]
 
 	var body struct {
-		Mode string `json:"mode"` // manual | auto
+		Mode string `json:"mode"`
 	}
 
 	_ = json.NewDecoder(r.Body).Decode(&body)
@@ -2684,12 +2817,12 @@ func (s *Server) handleAssistantChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	msg, err := s.Assistant.Chat(
-	r.Context(),
-	clientID,
-	u.Name,
-	u.Role,
-	u.Plan,
-	body.Message,
+		r.Context(),
+		clientID,
+		u.Name,
+		u.Role,
+		u.Plan,
+		body.Message,
 	)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
@@ -2729,7 +2862,7 @@ func (s *Server) handleVerifyInstagram(w http.ResponseWriter, r *http.Request) {
 	if igID == "" {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"connected": false,
-			"message": "No hay cuenta de Instagram conectada a esta página",
+			"message":   "No hay cuenta de Instagram conectada a esta página",
 		})
 		return
 	}
@@ -2741,9 +2874,9 @@ func (s *Server) handleVerifyInstagram(w http.ResponseWriter, r *http.Request) {
 	`, igID, igUser, cred.ID)
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"connected": true,
+		"connected":            true,
 		"instagram_account_id": igID,
-		"instagram_username": igUser,
+		"instagram_username":   igUser,
 	})
 }
 
@@ -2799,7 +2932,6 @@ func (s *Server) handleInstagramData(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) publishInstagram(accessToken, igID, imageURL, caption string) error {
 
-	// 1. Crear contenedor
 	createURL := fmt.Sprintf(
 		"https://graph.facebook.com/v19.0/%s/media?image_url=%s&caption=%s&access_token=%s",
 		igID,
@@ -2819,7 +2951,6 @@ func (s *Server) publishInstagram(accessToken, igID, imageURL, caption string) e
 
 	creationID := res["id"].(string)
 
-	// 2. Publicar
 	publishURL := fmt.Sprintf(
 		"https://graph.facebook.com/v19.0/%s/media_publish?creation_id=%s&access_token=%s",
 		igID,
@@ -2862,7 +2993,14 @@ func (s *Server) handlePublishMulti(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check limit antes de publicar múltiple
+	if err := s.Billing.CheckLimit(u.Role, clientID, "social_posts_month"); err != nil {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": err.Error()})
+		return
+	}
+
 	results := map[string]any{}
+	publishedCount := 0
 
 	for _, platform := range body.Platforms {
 		platform = strings.ToLower(strings.TrimSpace(platform))
@@ -2893,6 +3031,12 @@ func (s *Server) handlePublishMulti(w http.ResponseWriter, r *http.Request) {
 		}
 
 		results[platform] = map[string]any{"ok": true, "post_id": post.ID}
+		publishedCount++
+	}
+
+	// Incrementar uso solo por las publicaciones exitosas
+	if u.Role != "admin" && publishedCount > 0 {
+		_ = s.Billing.IncrementUsage(clientID, "social_posts_month", publishedCount)
 	}
 
 	writeJSON(w, 200, map[string]any{
@@ -2900,7 +3044,6 @@ func (s *Server) handlePublishMulti(w http.ResponseWriter, r *http.Request) {
 		"results": results,
 	})
 }
-
 
 func (s *Server) handleGenerateAIVideo(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
@@ -2931,10 +3074,21 @@ func (s *Server) handleGenerateAIVideo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check limit antes de crear video
+	if err := s.Billing.CheckLimit(u.Role, clientID, "ai_videos_month"); err != nil {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": err.Error()})
+		return
+	}
+
 	job, err := s.Video.CreateJob(r.Context(), clientID, body.Prompt, body.ImageURL, body.Duration)
 	if err != nil {
 		writeJSON(w, 500, map[string]any{"error": err.Error()})
 		return
+	}
+
+	// Incrementar uso si no es admin
+	if u.Role != "admin" {
+		_ = s.Billing.IncrementUsage(clientID, "ai_videos_month", 1)
 	}
 
 	writeJSON(w, 201, job)
@@ -3038,7 +3192,6 @@ func (s *Server) handleVoiceSubtitlesAIVideo(w http.ResponseWriter, r *http.Requ
 	})
 }
 
-
 func (s *Server) handleUploadAIVideo(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
 
@@ -3098,7 +3251,7 @@ func (s *Server) handleExportAIVideo(w http.ResponseWriter, r *http.Request) {
 	id := mux.Vars(r)["id"]
 
 	var body struct {
-		Preset string `json:"preset"` // tiktok | reels | shorts
+		Preset string `json:"preset"`
 	}
 
 	_ = json.NewDecoder(r.Body).Decode(&body)

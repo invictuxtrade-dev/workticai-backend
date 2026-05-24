@@ -155,6 +155,16 @@ func migrate(db *sql.DB) error {
 		updated_at TIMESTAMP NOT NULL
 	);`,
 
+		`CREATE TABLE IF NOT EXISTS usage_stats (
+		id TEXT PRIMARY KEY,
+		client_id TEXT NOT NULL,
+		metric TEXT NOT NULL,
+		used INTEGER NOT NULL DEFAULT 0,
+		period TEXT NOT NULL,
+		created_at TIMESTAMP NOT NULL,
+		updated_at TIMESTAMP NOT NULL
+	);`,
+
 	`CREATE TABLE IF NOT EXISTS subscriptions (
 		id TEXT PRIMARY KEY,
 		client_id TEXT NOT NULL,
@@ -536,6 +546,8 @@ func migrate(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_funnel_events_created_at ON funnel_events(created_at);`,
 		`CREATE INDEX IF NOT EXISTS idx_ai_video_jobs_client_id ON ai_video_jobs(client_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_ai_video_jobs_status ON ai_video_jobs(status);`,
+        `CREATE INDEX IF NOT EXISTS idx_usage_stats_client ON usage_stats(client_id);`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_unique ON usage_stats(client_id, metric, period);`,
 	}
 
 	for _, q := range queries {
