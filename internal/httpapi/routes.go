@@ -2732,6 +2732,8 @@ func (s *Server) handlePublishMulti(w http.ResponseWriter, r *http.Request) {
 		Platforms []string `json:"platforms"`
 		Content   string   `json:"content"`
 		ImageURL  string   `json:"image_url"`
+		VideoURL  string   `json:"video_url"`
+		MediaType string   `json:"media_type"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -2755,9 +2757,10 @@ func (s *Server) handlePublishMulti(w http.ResponseWriter, r *http.Request) {
 			platform,
 			body.Content,
 			body.ImageURL,
+			body.VideoURL,
 			"",
 			"now",
-			"manual",
+			body.MediaType,
 			"",
 			nil,
 		)
