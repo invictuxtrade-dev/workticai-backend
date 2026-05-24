@@ -155,8 +155,49 @@ func (m *BotManager) UpdateClient(c models.Client) error {
 }
 
 func (m *BotManager) DeleteClient(id string) error {
-	_, err := m.DB.Exec(`DELETE FROM clients WHERE id=?`, id)
-	return err
+	if strings.TrimSpace(id) == "" {
+		return errors.New("client id required")
+	}
+
+	bots, _ := m.ListBots(id)
+	for _, b := range bots {
+		_ = m.DeleteBot(b.ID)
+	}
+
+	tx, err := m.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	deletes := []string{
+		`DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE client_id=?)`,
+		`DELETE FROM users WHERE client_id=?`,
+		`DELETE FROM landing_pages WHERE client_id=?`,
+		`DELETE FROM funnel_events WHERE client_id=?`,
+		`DELETE FROM social_credentials WHERE client_id=?`,
+		`DELETE FROM social_campaigns WHERE client_id=?`,
+		`DELETE FROM social_posts WHERE client_id=?`,
+		`DELETE FROM social_jobs WHERE client_id=?`,
+		`DELETE FROM social_logs WHERE client_id=?`,
+		`DELETE FROM ai_video_jobs WHERE client_id=?`,
+		`DELETE FROM ads_campaigns WHERE client_id=?`,
+		`DELETE FROM group_bots WHERE client_id=?`,
+		`DELETE FROM facebook_group_targets WHERE client_id=?`,
+		`DELETE FROM facebook_group_join_queue WHERE client_id=?`,
+		`DELETE FROM facebook_group_activity_logs WHERE client_id=?`,
+		`DELETE FROM group_growth_settings WHERE client_id=?`,
+		`DELETE FROM subscriptions WHERE client_id=?`,
+		`DELETE FROM clients WHERE id=?`,
+	}
+
+	for _, q := range deletes {
+		if _, err := tx.Exec(q, id); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }
 
 func (m *BotManager) ListBots(clientID string) ([]models.Bot, error) {

@@ -79,4 +79,43 @@ func (a *AuthService) ListUsers(clientID string) ([]models.User, error) {
 	return out,nil
 }
 
+func (a *AuthService) UpdateUser(id, clientID, name, email, role, status, password string) (models.User, error) {
+	if id == "" {
+		return models.User{}, errors.New("user id required")
+	}
+
+	if status == "" {
+		status = "active"
+	}
+
+	if password != "" {
+		hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		if err != nil {
+			return models.User{}, err
+		}
+
+		_, err = a.DB.Exec(`
+			UPDATE users
+			SET client_id=?, name=?, email=?, role=?, status=?, password_hash=?
+			WHERE id=?
+		`, clientID, name, email, role, status, string(hash), id)
+
+		if err != nil {
+			return models.User{}, err
+		}
+	} else {
+		_, err := a.DB.Exec(`
+			UPDATE users
+			SET client_id=?, name=?, email=?, role=?, status=?
+			WHERE id=?
+		`, clientID, name, email, role, status, id)
+
+		if err != nil {
+			return models.User{}, err
+		}
+	}
+
+	return a.GetUser(id)
+}
+
 func (a *AuthService) DeleteUser(id string) error { _, err := a.DB.Exec(`DELETE FROM users WHERE id=?`, id); return err }

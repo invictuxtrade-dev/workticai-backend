@@ -64,6 +64,7 @@ func (s *Server) routes() {
 
 	secured.HandleFunc("/users", requireRole("admin")(s.handleListUsers)).Methods("GET", "OPTIONS")
 	secured.HandleFunc("/users", requireRole("admin")(s.handleCreateUser)).Methods("POST", "OPTIONS")
+	secured.HandleFunc("/users/{id}", requireRole("admin")(s.handleUpdateUser)).Methods("PUT", "OPTIONS")
 	secured.HandleFunc("/users/{id}", requireRole("admin")(s.handleDeleteUser)).Methods("DELETE", "OPTIONS")
 
 	secured.HandleFunc("/templates", s.handleListTemplates).Methods("GET", "OPTIONS")
@@ -335,6 +336,55 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, user)
+}
+
+func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+
+	var body struct {
+		ClientID string `json:"client_id"`
+		Name     string `json:"name"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
+		Role     string `json:"role"`
+		Status   string `json:"status"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+
+	if strings.TrimSpace(body.Name) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "name required"})
+		return
+	}
+
+	if strings.TrimSpace(body.Email) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "email required"})
+		return
+	}
+
+	if strings.TrimSpace(body.Role) == "" {
+		body.Role = "client_user"
+	}
+
+	user, err := s.Auth.UpdateUser(
+		id,
+		body.ClientID,
+		body.Name,
+		body.Email,
+		body.Role,
+		body.Status,
+		body.Password,
+	)
+
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, user)
 }
 
 func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
