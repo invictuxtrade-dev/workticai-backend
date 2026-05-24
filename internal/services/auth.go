@@ -135,7 +135,7 @@ func (a *AuthService) ListUsers(clientID string) ([]models.User, error) {
 	LEFT JOIN clients c ON c.id = u.client_id`
 	args := []any{}
 	if clientID != "" { query += ` WHERE client_id=?`; args = append(args, clientID) }
-	query += ` ORDER BY created_at DESC`
+	query += ` ORDER BY u.created_at DESC`
 	rows, err := a.DB.Query(query, args...); if err != nil { return nil, err }
 	defer rows.Close()
 	out := []models.User{}
