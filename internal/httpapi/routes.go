@@ -1091,7 +1091,7 @@ func (s *Server) handleSocialPosts(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := s.DB.Query(`
 		SELECT 
-			id, client_id, campaign_id, platform, content, image_url, target_url,
+			id, client_id, campaign_id, platform, content, image_url, video_url, target_url,
 			publish_mode, image_mode, image_prompt,
 			status, error, facebook_post_id,
 			scheduled_at, published_at, created_at
@@ -1115,6 +1115,7 @@ func (s *Server) handleSocialPosts(w http.ResponseWriter, r *http.Request) {
 			&p.Platform,
 			&p.Content,
 			&p.ImageURL,
+			&p.VideoURL,
 			&p.TargetURL,
 			&p.PublishMode,
 			&p.ImageMode,
@@ -1260,8 +1261,10 @@ func (s *Server) handlePublishSocialNow(w http.ResponseWriter, r *http.Request) 
 
 	var body struct {
 		CampaignID  string `json:"campaign_id"`
+		Platform    string `json:"platform"`
 		Content     string `json:"content"`
 		ImageURL    string `json:"image_url"`
+		VideoURL    string `json:"video_url"`
 		ImageMode   string `json:"image_mode"`
 		ImagePrompt string `json:"image_prompt"`
 		Objective   string `json:"objective"`
@@ -1283,14 +1286,20 @@ func (s *Server) handlePublishSocialNow(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
+	platform := strings.TrimSpace(strings.ToLower(body.Platform))
+	if platform == "" {
+		platform = "facebook"
+	}
+
 	targetURL := s.Social.ResolveTargetURL(clientID, body.Objective, body.BotID, body.LandingID, body.ManualLink)
 
 	post, err := s.Social.CreatePost(
 		clientID,
 		body.CampaignID,
-		"facebook",
+		platform,
 		body.Content,
 		body.ImageURL,
+		body.VideoURL,
 		targetURL,
 		"now",
 		body.ImageMode,
@@ -1315,8 +1324,10 @@ func (s *Server) handleScheduleSocialPost(w http.ResponseWriter, r *http.Request
 
 	var body struct {
 		CampaignID       string     `json:"campaign_id"`
+		Platform         string     `json:"platform"`
 		Content          string     `json:"content"`
 		ImageURL         string     `json:"image_url"`
+		VideoURL         string     `json:"video_url"`
 		ImageMode        string     `json:"image_mode"`
 		ImagePrompt      string     `json:"image_prompt"`
 		Objective        string     `json:"objective"`
@@ -1342,14 +1353,20 @@ func (s *Server) handleScheduleSocialPost(w http.ResponseWriter, r *http.Request
 		}
 	}
 
+	platform := strings.TrimSpace(strings.ToLower(body.Platform))
+	if platform == "" {
+		platform = "facebook"
+	}
+
 	targetURL := s.Social.ResolveTargetURL(clientID, body.Objective, body.BotID, body.LandingID, body.ManualLink)
 
 	post, err := s.Social.CreatePost(
 		clientID,
 		body.CampaignID,
-		"facebook",
+		platform,
 		body.Content,
 		body.ImageURL,
+		body.VideoURL,
 		targetURL,
 		body.PublishMode,
 		body.ImageMode,

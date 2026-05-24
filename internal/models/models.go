@@ -156,11 +156,17 @@ type SocialCredential struct {
 	PageName    string    `json:"page_name"`
 	Enabled     bool      `json:"enabled"`
 	AdAccountID string    `json:"ad_account_id"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+
 	InstagramAccountID string `json:"instagram_account_id"`
 	InstagramUsername  string `json:"instagram_username"`
 	InstagramConnected bool   `json:"instagram_connected"`
+
+	TikTokAccessToken string `json:"tiktok_access_token"`
+	TikTokOpenID      string `json:"tiktok_open_id"`
+	TikTokConnected   bool   `json:"tiktok_connected"`
+
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type SocialCampaign struct {
@@ -192,6 +198,7 @@ type SocialPost struct {
 	Platform       string     `json:"platform"` // facebook
 	Content        string     `json:"content"`
 	ImageURL       string     `json:"image_url"`
+	VideoURL 	   string     `json:"video_url"`
 	TargetURL      string     `json:"target_url"`
 	PublishMode    string     `json:"publish_mode"`
 	ImageMode      string     `json:"image_mode"`   // ai | manual | none

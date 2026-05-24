@@ -86,6 +86,11 @@ func Open(path string) (*sql.DB, error) {
 	`ALTER TABLE social_credentials ADD COLUMN instagram_account_id TEXT DEFAULT ''`,
 	`ALTER TABLE social_credentials ADD COLUMN instagram_username TEXT DEFAULT ''`,
 	`ALTER TABLE social_credentials ADD COLUMN instagram_connected INTEGER DEFAULT 0`,
+
+	`ALTER TABLE social_posts ADD COLUMN video_url TEXT DEFAULT ''`,
+	`ALTER TABLE social_credentials ADD COLUMN tiktok_access_token TEXT DEFAULT ''`,
+	`ALTER TABLE social_credentials ADD COLUMN tiktok_open_id TEXT DEFAULT ''`,
+	`ALTER TABLE social_credentials ADD COLUMN tiktok_connected INTEGER DEFAULT 0`,
 }
 
 	for _, q := range softMigrations {
@@ -296,17 +301,23 @@ func migrate(db *sql.DB) error {
 		// ================= SOCIAL IA =================
 
 		`CREATE TABLE IF NOT EXISTS social_credentials (
-		id TEXT PRIMARY KEY,
-		client_id TEXT NOT NULL,
-		platform TEXT NOT NULL,
-		access_token TEXT NOT NULL,
-		page_id TEXT NOT NULL,
-		page_name TEXT NOT NULL DEFAULT '',
-		enabled INTEGER NOT NULL DEFAULT 1,
-		ad_account_id TEXT NOT NULL DEFAULT '',
-		created_at TIMESTAMP NOT NULL,
-		updated_at TIMESTAMP NOT NULL
-	);`,
+			id TEXT PRIMARY KEY,
+			client_id TEXT NOT NULL,
+			platform TEXT NOT NULL,
+			access_token TEXT NOT NULL,
+			page_id TEXT NOT NULL,
+			page_name TEXT NOT NULL DEFAULT '',
+			enabled INTEGER NOT NULL DEFAULT 1,
+			ad_account_id TEXT NOT NULL DEFAULT '',
+			instagram_account_id TEXT NOT NULL DEFAULT '',
+			instagram_username TEXT NOT NULL DEFAULT '',
+			instagram_connected INTEGER NOT NULL DEFAULT 0,
+			tiktok_access_token TEXT NOT NULL DEFAULT '',
+			tiktok_open_id TEXT NOT NULL DEFAULT '',
+			tiktok_connected INTEGER NOT NULL DEFAULT 0,
+			created_at TIMESTAMP NOT NULL,
+			updated_at TIMESTAMP NOT NULL
+			);`,
 	
 
 		`CREATE TABLE IF NOT EXISTS social_campaigns (
@@ -338,6 +349,7 @@ func migrate(db *sql.DB) error {
 		platform TEXT NOT NULL,
 		content TEXT NOT NULL,
 		image_url TEXT NOT NULL,
+		video_url TEXT NOT NULL DEFAULT '',
 		target_url TEXT NOT NULL,
 		publish_mode TEXT NOT NULL DEFAULT 'now',
 		image_mode TEXT NOT NULL DEFAULT 'none',
