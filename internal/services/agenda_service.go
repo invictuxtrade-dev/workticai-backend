@@ -53,8 +53,8 @@ type AppointmentSettings struct {
 	DurationMins          int       `json:"duration_mins"`
 	BufferMins            int       `json:"buffer_mins"`
 	AvailableDays         string    `json:"available_days"`
-	StartTime              string    `json:"start_time"`
-	EndTime                string    `json:"end_time"`
+	StartTime             string    `json:"start_time"`
+	EndTime               string    `json:"end_time"`
 	NotifyEmail           string    `json:"notify_email"`
 	NotifyWhatsapp        string    `json:"notify_whatsapp"`
 	AutoConfirm           bool      `json:"auto_confirm"`
@@ -367,7 +367,7 @@ func (a *AgendaService) SaveSettings(x AppointmentSettings) (AppointmentSettings
 		x.ID,
 		x.ClientID,
 		x.BotID,
-		boolToIntGlobal(x.Enabled),
+		boolToInt(x.Enabled),
 		x.Goal,
 		x.Timezone,
 		x.DurationMins,
@@ -377,9 +377,9 @@ func (a *AgendaService) SaveSettings(x AppointmentSettings) (AppointmentSettings
 		x.EndTime,
 		x.NotifyEmail,
 		x.NotifyWhatsapp,
-		boolToIntGlobal(x.AutoConfirm),
+		boolToInt(x.AutoConfirm),
 		x.ReminderBeforeMins,
-		boolToIntGlobal(x.FollowupNoShowEnabled),
+		boolToInt(x.FollowupNoShowEnabled),
 		now,
 		now,
 	)
@@ -471,7 +471,7 @@ func (a *AgendaService) SaveAgent(x AppointmentAgent) (AppointmentAgent, error) 
 		x.Whatsapp,
 		x.Role,
 		x.Color,
-		boolToIntGlobal(x.IsActive),
+		boolToInt(x.IsActive),
 		x.CreatedAt,
 		x.UpdatedAt,
 	)
