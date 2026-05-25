@@ -3,6 +3,7 @@ package services
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -75,6 +76,26 @@ type AppointmentAgent struct {
 	IsActive  bool      `json:"is_active"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type AvailabilitySlot struct {
+	StartAt  time.Time `json:"start_at"`
+	EndAt    time.Time `json:"end_at"`
+	Label    string    `json:"label"`
+	Timezone string    `json:"timezone"`
+}
+
+type AutoAppointmentRequest struct {
+	ClientID     string `json:"client_id"`
+	BotID        string `json:"bot_id"`
+	LeadID       int64  `json:"lead_id"`
+	ChatJID      string `json:"chat_jid"`
+	ContactName  string `json:"contact_name"`
+	ContactPhone string `json:"contact_phone"`
+	Message      string `json:"message"`
+	PreferredAt  string `json:"preferred_at"`
+	AISummary    string `json:"ai_summary"`
+	LeadScore    int    `json:"lead_score"`
 }
 
 func (a *AgendaService) ListAppointments(clientID, status string) ([]Appointment, error) {
@@ -525,4 +546,227 @@ func (a *AgendaService) Metrics(clientID string) (map[string]int, error) {
 	}
 
 	return out, nil
+}
+
+func (a *AgendaService) IsAvailable(clientID, botID string, startAt, endAt time.Time) (bool, string, error) {
+	if strings.TrimSpace(clientID) == "" {
+		return false, "client_id required", nil
+	}
+	if strings.TrimSpace(botID) == "" {
+		return false, "bot_id required", nil
+	}
+	if startAt.IsZero() || endAt.IsZero() || !endAt.After(startAt) {
+		return false, "invalid appointment time", nil
+	}
+
+	settings, err := a.GetSettings(clientID, botID)
+	if err != nil {
+		return false, "agenda settings not configured", nil
+	}
+
+	if !settings.Enabled {
+		return false, "agenda ai disabled for this bot", nil
+	}
+
+	weekday := strings.ToLower(startAt.Weekday().String()[:3])
+	if !strings.Contains(strings.ToLower(settings.AvailableDays), weekday) {
+		return false, "day not available", nil
+	}
+
+	startClock := startAt.Format("15:04")
+	endClock := endAt.Format("15:04")
+
+	if startClock < settings.StartTime || endClock > settings.EndTime {
+		return false, "outside available hours", nil
+	}
+
+	buffer := time.Duration(settings.BufferMins) * time.Minute
+	from := startAt.Add(-buffer)
+	to := endAt.Add(buffer)
+
+	var conflicts int
+	err = a.DB.QueryRow(`
+		SELECT COUNT(*)
+		FROM appointments
+		WHERE client_id=?
+		AND bot_id=?
+		AND status NOT IN ('cancelled', 'completed', 'no_show')
+		AND start_at < ?
+		AND end_at > ?
+	`, clientID, botID, to, from).Scan(&conflicts)
+
+	if err != nil {
+		return false, "availability check failed", err
+	}
+
+	if conflicts > 0 {
+		return false, "slot already booked", nil
+	}
+
+	return true, "", nil
+}
+
+func (a *AgendaService) NextAvailableSlots(clientID, botID string, limit int) ([]AvailabilitySlot, error) {
+	if limit <= 0 {
+		limit = 5
+	}
+
+	settings, err := a.GetSettings(clientID, botID)
+	if err != nil {
+		return []AvailabilitySlot{}, err
+	}
+
+	duration := time.Duration(settings.DurationMins) * time.Minute
+	step := duration + time.Duration(settings.BufferMins)*time.Minute
+
+	out := []AvailabilitySlot{}
+	now := time.Now()
+
+	for d := 0; d < 14 && len(out) < limit; d++ {
+		day := now.AddDate(0, 0, d)
+		weekday := strings.ToLower(day.Weekday().String()[:3])
+
+		if !strings.Contains(strings.ToLower(settings.AvailableDays), weekday) {
+			continue
+		}
+
+		startDay, err := time.ParseInLocation("2006-01-02 15:04", day.Format("2006-01-02")+" "+settings.StartTime, time.Local)
+		if err != nil {
+			continue
+		}
+
+		endDay, err := time.ParseInLocation("2006-01-02 15:04", day.Format("2006-01-02")+" "+settings.EndTime, time.Local)
+		if err != nil {
+			continue
+		}
+
+		for slotStart := startDay; slotStart.Add(duration).Before(endDay) || slotStart.Add(duration).Equal(endDay); slotStart = slotStart.Add(step) {
+			if slotStart.Before(now.Add(15 * time.Minute)) {
+				continue
+			}
+
+			slotEnd := slotStart.Add(duration)
+
+			ok, _, _ := a.IsAvailable(clientID, botID, slotStart, slotEnd)
+			if ok {
+				out = append(out, AvailabilitySlot{
+					StartAt:  slotStart,
+					EndAt:    slotEnd,
+					Label:    slotStart.Format("Mon 02 Jan 15:04"),
+					Timezone: settings.Timezone,
+				})
+			}
+
+			if len(out) >= limit {
+				break
+			}
+		}
+	}
+
+	return out, nil
+}
+
+func (a *AgendaService) CreateNotification(clientID, appointmentID, channel, message string) error {
+	now := time.Now()
+
+	_, err := a.DB.Exec(`
+		INSERT INTO appointment_notifications (
+			id, client_id, appointment_id, channel, status, message, error, created_at, sent_at
+		)
+		VALUES (?, ?, ?, ?, 'pending', ?, '', ?, NULL)
+	`,
+		uuid.NewString(),
+		clientID,
+		appointmentID,
+		channel,
+		message,
+		now,
+	)
+
+	return err
+}
+
+func (a *AgendaService) CreateAutomaticAppointment(req AutoAppointmentRequest) (Appointment, []AvailabilitySlot, error) {
+	if strings.TrimSpace(req.ClientID) == "" {
+		return Appointment{}, nil, errors.New("client_id required")
+	}
+	if strings.TrimSpace(req.BotID) == "" {
+		return Appointment{}, nil, errors.New("bot_id required")
+	}
+
+	settings, err := a.GetSettings(req.ClientID, req.BotID)
+	if err != nil || !settings.Enabled {
+		return Appointment{}, nil, errors.New("agenda ai disabled or not configured")
+	}
+
+	var startAt time.Time
+
+	if strings.TrimSpace(req.PreferredAt) != "" {
+		parsed, err := time.Parse(time.RFC3339, req.PreferredAt)
+		if err == nil {
+			startAt = parsed
+		}
+	}
+
+	if startAt.IsZero() {
+		slots, err := a.NextAvailableSlots(req.ClientID, req.BotID, 3)
+		if err != nil {
+			return Appointment{}, nil, err
+		}
+		return Appointment{}, slots, errors.New("needs_time_confirmation")
+	}
+
+	endAt := startAt.Add(time.Duration(settings.DurationMins) * time.Minute)
+
+	ok, reason, err := a.IsAvailable(req.ClientID, req.BotID, startAt, endAt)
+	if err != nil {
+		return Appointment{}, nil, err
+	}
+
+	if !ok {
+		slots, _ := a.NextAvailableSlots(req.ClientID, req.BotID, 3)
+		return Appointment{}, slots, fmt.Errorf(reason)
+	}
+
+	ap := Appointment{
+		ClientID:     req.ClientID,
+		BotID:        req.BotID,
+		LeadID:       req.LeadID,
+		Title:        "Cita agendada por IA",
+		ContactName:  req.ContactName,
+		ContactPhone: req.ContactPhone,
+		Status:       "scheduled",
+		Source:       "whatsapp_ai",
+		MeetingType:  settings.Goal,
+		Notes:        req.Message,
+		AISummary:    req.AISummary,
+		LeadScore:    req.LeadScore,
+		StartAt:      startAt,
+		EndAt:        endAt,
+		Timezone:     settings.Timezone,
+	}
+
+	ap, err = a.CreateAppointment(ap)
+	if err != nil {
+		return Appointment{}, nil, err
+	}
+
+	_ = a.CreateNotification(req.ClientID, ap.ID, "dashboard", "Nueva cita agendada automáticamente por Agenda AI")
+
+	if strings.TrimSpace(settings.NotifyEmail) != "" {
+		_ = a.CreateNotification(req.ClientID, ap.ID, "email", "Nueva cita Agenda AI para "+ap.ContactName)
+	}
+
+	if strings.TrimSpace(settings.NotifyWhatsapp) != "" {
+		_ = a.CreateNotification(req.ClientID, ap.ID, "whatsapp", "Nueva cita Agenda AI para "+ap.ContactName)
+	}
+
+	return ap, nil, nil
+}
+
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
