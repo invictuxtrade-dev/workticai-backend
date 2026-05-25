@@ -108,6 +108,8 @@ func NewServer() (*Server, error) {
 	assistant := services.NewAssistantService(db, ai)
 	video := services.NewVideoService(db, publicBaseURL)
 	agenda := services.NewAgendaService(db)
+	agendaScheduler := services.NewAgendaScheduler(db, agenda, manager)
+	agendaScheduler.Start()
 
 	return New(db, manager, auth, templates, funnel, social, billing, ads, groups, assistant, video, agenda), nil
 }
