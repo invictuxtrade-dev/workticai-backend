@@ -266,7 +266,8 @@ func (b *BillingService) SeedDefaults() error {
 			"groups_ai": false,
 			"assistant_ai": false,
 			"academy_ai": false,
-			"marketplace": false
+			"marketplace": false,
+			"agenda_ai": true
 		}`,
 
 		Limits: `{
@@ -281,7 +282,8 @@ func (b *BillingService) SeedDefaults() error {
 			"ads_campaigns_month": 0,
 			"group_bots": 0,
 			"academy_courses": 0,
-			"storage_mb": 500
+			"storage_mb": 500,
+			"appointments_month": 0
 		}`,
 
 		GraceDays: 1,
@@ -321,7 +323,8 @@ func (b *BillingService) SeedDefaults() error {
 			"groups_ai": false,
 			"assistant_ai": true,
 			"academy_ai": false,
-			"marketplace": true
+			"marketplace": true,
+			"agenda_ai": true
 		}`,
 
 		Limits: `{
@@ -336,7 +339,8 @@ func (b *BillingService) SeedDefaults() error {
 			"ads_campaigns_month": 5,
 			"group_bots": 0,
 			"academy_courses": 2,
-			"storage_mb": 2048
+			"storage_mb": 2048,
+			"appointments_month": 10
 		}`,
 
 		GraceDays: 2,
@@ -377,7 +381,8 @@ func (b *BillingService) SeedDefaults() error {
 			"groups_ai": true,
 			"assistant_ai": true,
 			"academy_ai": true,
-			"marketplace": true
+			"marketplace": true,
+			"agenda_ai": true
 		}`,
 
 		Limits: `{
@@ -392,7 +397,8 @@ func (b *BillingService) SeedDefaults() error {
 			"ads_campaigns_month": 100,
 			"group_bots": 10,
 			"academy_courses": 20,
-			"storage_mb": 10240
+			"storage_mb": 10240,
+			"appointments_month": 100
 		}`,
 
 		GraceDays: 3,
@@ -433,7 +439,8 @@ func (b *BillingService) SeedDefaults() error {
 			"assistant_ai": true,
 			"academy_ai": true,
 			"marketplace": true,
-			"white_label": true
+			"white_label": true,
+			"agenda_ai": true
 		}`,
 
 		Limits: `{
@@ -449,6 +456,7 @@ func (b *BillingService) SeedDefaults() error {
 			"group_bots": 999,
 			"academy_courses": 999,
 			"storage_mb": 102400
+			"appointments_month": 1000
 		}`,
 
 		GraceDays: 5,

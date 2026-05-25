@@ -525,6 +525,78 @@ func migrate(db *sql.DB) error {
 			created_at TIMESTAMP NOT NULL
 		);`,
 
+			`CREATE TABLE IF NOT EXISTS appointments (
+		id TEXT PRIMARY KEY,
+		client_id TEXT NOT NULL,
+		bot_id TEXT DEFAULT '',
+		lead_id INTEGER DEFAULT 0,
+		agent_id TEXT DEFAULT '',
+		title TEXT NOT NULL DEFAULT '',
+		contact_name TEXT DEFAULT '',
+		contact_phone TEXT DEFAULT '',
+		contact_email TEXT DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'scheduled',
+		source TEXT NOT NULL DEFAULT 'manual',
+		meeting_type TEXT DEFAULT 'call',
+		meeting_link TEXT DEFAULT '',
+		location TEXT DEFAULT '',
+		notes TEXT DEFAULT '',
+		ai_summary TEXT DEFAULT '',
+		lead_score INTEGER DEFAULT 0,
+		start_at TIMESTAMP NOT NULL,
+		end_at TIMESTAMP NOT NULL,
+		timezone TEXT DEFAULT 'America/Bogota',
+		reminder_sent_at TIMESTAMP NULL,
+		created_at TIMESTAMP NOT NULL,
+		updated_at TIMESTAMP NOT NULL
+	);`,
+
+	`CREATE TABLE IF NOT EXISTS appointment_settings (
+		id TEXT PRIMARY KEY,
+		client_id TEXT NOT NULL,
+		bot_id TEXT NOT NULL,
+		enabled INTEGER NOT NULL DEFAULT 0,
+		goal TEXT DEFAULT 'sales_call',
+		timezone TEXT DEFAULT 'America/Bogota',
+		duration_mins INTEGER DEFAULT 30,
+		buffer_mins INTEGER DEFAULT 0,
+		available_days TEXT DEFAULT 'mon,tue,wed,thu,fri',
+		start_time TEXT DEFAULT '09:00',
+		end_time TEXT DEFAULT '18:00',
+		notify_email TEXT DEFAULT '',
+		notify_whatsapp TEXT DEFAULT '',
+		auto_confirm INTEGER DEFAULT 1,
+		reminder_before_mins INTEGER DEFAULT 60,
+		followup_no_show_enabled INTEGER DEFAULT 1,
+		created_at TIMESTAMP NOT NULL,
+		updated_at TIMESTAMP NOT NULL
+	);`,
+
+	`CREATE TABLE IF NOT EXISTS appointment_agents (
+		id TEXT PRIMARY KEY,
+		client_id TEXT NOT NULL,
+		name TEXT NOT NULL,
+		email TEXT DEFAULT '',
+		whatsapp TEXT DEFAULT '',
+		role TEXT DEFAULT 'sales',
+		color TEXT DEFAULT '#7430e2',
+		is_active INTEGER NOT NULL DEFAULT 1,
+		created_at TIMESTAMP NOT NULL,
+		updated_at TIMESTAMP NOT NULL
+	);`,
+
+	`CREATE TABLE IF NOT EXISTS appointment_notifications (
+		id TEXT PRIMARY KEY,
+		client_id TEXT NOT NULL,
+		appointment_id TEXT NOT NULL,
+		channel TEXT NOT NULL,
+		status TEXT NOT NULL DEFAULT 'pending',
+		message TEXT DEFAULT '',
+		error TEXT DEFAULT '',
+		created_at TIMESTAMP NOT NULL,
+		sent_at TIMESTAMP NULL
+	);`,
+
 		`CREATE INDEX IF NOT EXISTS idx_assistant_messages_client_id ON assistant_messages(client_id);`,
 
 		`CREATE INDEX IF NOT EXISTS idx_social_jobs_status_run_at ON social_jobs(status, run_at);`,
@@ -548,6 +620,12 @@ func migrate(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_ai_video_jobs_status ON ai_video_jobs(status);`,
         `CREATE INDEX IF NOT EXISTS idx_usage_stats_client ON usage_stats(client_id);`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_unique ON usage_stats(client_id, metric, period);`,
+		`CREATE INDEX IF NOT EXISTS idx_appointments_client ON appointments(client_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_appointments_bot ON appointments(bot_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_appointments_start ON appointments(start_at);`,
+		`CREATE INDEX IF NOT EXISTS idx_appointments_status ON appointments(status);`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_appointment_settings_unique ON appointment_settings(client_id, bot_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_appointment_agents_client ON appointment_agents(client_id);`,
 	}
 
 	for _, q := range queries {

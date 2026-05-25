@@ -165,6 +165,19 @@ func (s *Server) routes() {
 	secured.HandleFunc("/assistant/messages", s.handleAssistantMessages).Methods("GET", "OPTIONS")
 	secured.HandleFunc("/assistant/messages", s.handleClearAssistantMessages).Methods("DELETE", "OPTIONS")
 	secured.HandleFunc("/assistant/chat", s.handleAssistantChat).Methods("POST", "OPTIONS")
+
+	secured.HandleFunc("/agenda/metrics", s.handleAgendaMetrics).Methods("GET", "OPTIONS")
+	secured.HandleFunc("/agenda/appointments", s.handleListAppointments).Methods("GET", "OPTIONS")
+	secured.HandleFunc("/agenda/appointments", s.handleCreateAppointment).Methods("POST", "OPTIONS")
+	secured.HandleFunc("/agenda/appointments/{id}", s.handleUpdateAppointment).Methods("PUT", "OPTIONS")
+	secured.HandleFunc("/agenda/appointments/{id}", s.handleDeleteAppointment).Methods("DELETE", "OPTIONS")
+
+	secured.HandleFunc("/agenda/settings", s.handleGetAppointmentSettings).Methods("GET", "OPTIONS")
+	secured.HandleFunc("/agenda/settings", s.handleSaveAppointmentSettings).Methods("PUT", "OPTIONS")
+
+	secured.HandleFunc("/agenda/agents", s.handleListAppointmentAgents).Methods("GET", "OPTIONS")
+	secured.HandleFunc("/agenda/agents", s.handleSaveAppointmentAgent).Methods("POST", "OPTIONS")
+	secured.HandleFunc("/agenda/agents/{id}", s.handleDeleteAppointmentAgent).Methods("DELETE", "OPTIONS")
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
@@ -3302,4 +3315,212 @@ func (s *Server) handleAnimatedCaptionsAIVideo(w http.ResponseWriter, r *http.Re
 	}
 
 	writeJSON(w, 200, job)
+}
+
+func (s *Server) handleAgendaMetrics(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+
+	clientID := r.URL.Query().Get("client_id")
+	if u.Role != "admin" {
+		clientID = u.ClientID
+	}
+
+	data, err := s.Agenda.Metrics(clientID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, data)
+}
+
+func (s *Server) handleListAppointments(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+
+	clientID := r.URL.Query().Get("client_id")
+	status := r.URL.Query().Get("status")
+
+	if u.Role != "admin" {
+		clientID = u.ClientID
+	}
+
+	items, err := s.Agenda.ListAppointments(clientID, status)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, items)
+}
+
+func (s *Server) handleCreateAppointment(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+
+	var body services.Appointment
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+
+	if u.Role != "admin" {
+		body.ClientID = u.ClientID
+	}
+
+	if err := s.Billing.CheckLimit(u.Role, body.ClientID, "appointments_month"); err != nil {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": err.Error()})
+		return
+	}
+
+	item, err := s.Agenda.CreateAppointment(body)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+
+	if u.Role != "admin" {
+		_ = s.Billing.IncrementUsage(body.ClientID, "appointments_month", 1)
+	}
+
+	writeJSON(w, http.StatusCreated, item)
+}
+
+func (s *Server) handleUpdateAppointment(w http.ResponseWriter, r *http.Request) {
+	var body services.Appointment
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+
+	body.ID = mux.Vars(r)["id"]
+
+	if err := s.Agenda.UpdateAppointment(body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"success": true})
+}
+
+func (s *Server) handleDeleteAppointment(w http.ResponseWriter, r *http.Request) {
+	if err := s.Agenda.DeleteAppointment(mux.Vars(r)["id"]); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"success": true})
+}
+
+func (s *Server) handleGetAppointmentSettings(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+
+	clientID := r.URL.Query().Get("client_id")
+	botID := r.URL.Query().Get("bot_id")
+
+	if u.Role != "admin" {
+		clientID = u.ClientID
+	}
+
+	if strings.TrimSpace(botID) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bot_id required"})
+		return
+	}
+
+	item, err := s.Agenda.GetSettings(clientID, botID)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"client_id":                 clientID,
+			"bot_id":                    botID,
+			"enabled":                   false,
+			"goal":                      "sales_call",
+			"timezone":                  "America/Bogota",
+			"duration_mins":             30,
+			"buffer_mins":               0,
+			"available_days":            "mon,tue,wed,thu,fri",
+			"start_time":                "09:00",
+			"end_time":                  "18:00",
+			"notify_email":              "",
+			"notify_whatsapp":           "",
+			"auto_confirm":              true,
+			"reminder_before_mins":      60,
+			"followup_no_show_enabled":  true,
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, item)
+}
+
+func (s *Server) handleSaveAppointmentSettings(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+
+	var body services.AppointmentSettings
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+
+	if u.Role != "admin" {
+		body.ClientID = u.ClientID
+	}
+
+	if err := s.Billing.CheckLimit(u.Role, body.ClientID, "agenda_ai"); err != nil {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": err.Error()})
+		return
+	}
+
+	item, err := s.Agenda.SaveSettings(body)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, item)
+}
+
+func (s *Server) handleListAppointmentAgents(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+
+	clientID := r.URL.Query().Get("client_id")
+	if u.Role != "admin" {
+		clientID = u.ClientID
+	}
+
+	items, err := s.Agenda.ListAgents(clientID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, items)
+}
+
+func (s *Server) handleSaveAppointmentAgent(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+
+	var body services.AppointmentAgent
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+
+	if u.Role != "admin" {
+		body.ClientID = u.ClientID
+	}
+
+	item, err := s.Agenda.SaveAgent(body)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, item)
+}
+
+func (s *Server) handleDeleteAppointmentAgent(w http.ResponseWriter, r *http.Request) {
+	if err := s.Agenda.DeleteAgent(mux.Vars(r)["id"]); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"success": true})
 }
