@@ -764,9 +764,3 @@ func (a *AgendaService) CreateAutomaticAppointment(req AutoAppointmentRequest) (
 	return ap, nil, nil
 }
 
-func boolToInt(b bool) int {
-	if b {
-		return 1
-	}
-	return 0
-}
