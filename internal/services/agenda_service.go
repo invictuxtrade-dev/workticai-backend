@@ -39,8 +39,8 @@ type Appointment struct {
 	EndAt          time.Time  `json:"end_at"`
 	Timezone       string     `json:"timezone"`
 	ReminderSentAt *time.Time `json:"reminder_sent_at"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
 }
 
 type AppointmentSettings struct {
@@ -104,9 +104,29 @@ func (a *AgendaService) ListAppointments(clientID, status string) ([]Appointment
 	for rows.Next() {
 		var x Appointment
 		if err := rows.Scan(
-			&x.ID, &x.ClientID, &x.BotID, &x.LeadID, &x.AgentID, &x.Title, &x.ContactName, &x.ContactPhone, &x.ContactEmail,
-			&x.Status, &x.Source, &x.MeetingType, &x.MeetingLink, &x.Location, &x.Notes, &x.AISummary, &x.LeadScore,
-			&x.StartAt, &x.EndAt, &x.Timezone, &x.ReminderSentAt, &x.CreatedAt, &x.UpdatedAt,
+			&x.ID,
+			&x.ClientID,
+			&x.BotID,
+			&x.LeadID,
+			&x.AgentID,
+			&x.Title,
+			&x.ContactName,
+			&x.ContactPhone,
+			&x.ContactEmail,
+			&x.Status,
+			&x.Source,
+			&x.MeetingType,
+			&x.MeetingLink,
+			&x.Location,
+			&x.Notes,
+			&x.AISummary,
+			&x.LeadScore,
+			&x.StartAt,
+			&x.EndAt,
+			&x.Timezone,
+			&x.ReminderSentAt,
+			&x.CreatedAt,
+			&x.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -141,6 +161,9 @@ func (a *AgendaService) CreateAppointment(x Appointment) (Appointment, error) {
 	if x.Title == "" {
 		x.Title = "Cita comercial"
 	}
+	if x.StartAt.IsZero() {
+		return Appointment{}, errors.New("start_at required")
+	}
 	if x.EndAt.IsZero() {
 		x.EndAt = x.StartAt.Add(30 * time.Minute)
 	}
@@ -156,9 +179,29 @@ func (a *AgendaService) CreateAppointment(x Appointment) (Appointment, error) {
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
-		x.ID, x.ClientID, x.BotID, x.LeadID, x.AgentID, x.Title, x.ContactName, x.ContactPhone, x.ContactEmail,
-		x.Status, x.Source, x.MeetingType, x.MeetingLink, x.Location, x.Notes, x.AISummary, x.LeadScore,
-		x.StartAt, x.EndAt, x.Timezone, x.ReminderSentAt, x.CreatedAt, x.UpdatedAt,
+		x.ID,
+		x.ClientID,
+		x.BotID,
+		x.LeadID,
+		x.AgentID,
+		x.Title,
+		x.ContactName,
+		x.ContactPhone,
+		x.ContactEmail,
+		x.Status,
+		x.Source,
+		x.MeetingType,
+		x.MeetingLink,
+		x.Location,
+		x.Notes,
+		x.AISummary,
+		x.LeadScore,
+		x.StartAt,
+		x.EndAt,
+		x.Timezone,
+		x.ReminderSentAt,
+		x.CreatedAt,
+		x.UpdatedAt,
 	)
 
 	return x, err
@@ -324,7 +367,7 @@ func (a *AgendaService) SaveSettings(x AppointmentSettings) (AppointmentSettings
 		x.ID,
 		x.ClientID,
 		x.BotID,
-		boolToInt(x.Enabled),
+		boolToIntGlobal(x.Enabled),
 		x.Goal,
 		x.Timezone,
 		x.DurationMins,
@@ -334,9 +377,9 @@ func (a *AgendaService) SaveSettings(x AppointmentSettings) (AppointmentSettings
 		x.EndTime,
 		x.NotifyEmail,
 		x.NotifyWhatsapp,
-		boolToInt(x.AutoConfirm),
+		boolToIntGlobal(x.AutoConfirm),
 		x.ReminderBeforeMins,
-		boolToInt(x.FollowupNoShowEnabled),
+		boolToIntGlobal(x.FollowupNoShowEnabled),
 		now,
 		now,
 	)
@@ -428,7 +471,7 @@ func (a *AgendaService) SaveAgent(x AppointmentAgent) (AppointmentAgent, error) 
 		x.Whatsapp,
 		x.Role,
 		x.Color,
-		boolToInt(x.IsActive),
+		boolToIntGlobal(x.IsActive),
 		x.CreatedAt,
 		x.UpdatedAt,
 	)
@@ -451,12 +494,16 @@ func (a *AgendaService) Metrics(clientID string) (map[string]int, error) {
 		"cancelled": 0,
 	}
 
+	var todayCount int
+
 	_ = a.DB.QueryRow(`
 		SELECT COUNT(*)
 		FROM appointments
-		WHERE client_id=?
+		WHERE (?='' OR client_id=?)
 		AND date(start_at)=date('now')
-	`, clientID).Scan(&out["today"])
+	`, clientID, clientID).Scan(&todayCount)
+
+	out["today"] = todayCount
 
 	rows, err := a.DB.Query(`
 		SELECT status, COUNT(*)
@@ -478,11 +525,4 @@ func (a *AgendaService) Metrics(clientID string) (map[string]int, error) {
 	}
 
 	return out, nil
-}
-
-func boolToInt(v bool) int {
-	if v {
-		return 1
-	}
-	return 0
 }
