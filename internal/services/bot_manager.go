@@ -192,6 +192,10 @@ func (m *BotManager) DeleteClient(id string) error {
 		`DELETE FROM facebook_group_activity_logs WHERE client_id=?`,
 		`DELETE FROM group_growth_settings WHERE client_id=?`,
 		`DELETE FROM subscriptions WHERE client_id=?`,
+		`DELETE FROM appointments WHERE client_id=?`,
+		`DELETE FROM appointment_settings WHERE client_id=?`,
+		`DELETE FROM appointment_agents WHERE client_id=?`,
+		`DELETE FROM appointment_notifications WHERE client_id=?`,
 		`DELETE FROM clients WHERE id=?`,
 	}
 
@@ -264,6 +268,8 @@ func (m *BotManager) DeleteBot(id string) error {
 	_, _ = m.DB.Exec(`DELETE FROM messages WHERE bot_id=?`, id)
 	_, _ = m.DB.Exec(`DELETE FROM leads WHERE bot_id=?`, id)
 	_, _ = m.DB.Exec(`DELETE FROM bot_configs WHERE bot_id=?`, id)
+	_, _ = m.DB.Exec(`DELETE FROM appointments WHERE bot_id=?`, id)
+	_, _ = m.DB.Exec(`DELETE FROM appointment_settings WHERE bot_id=?`, id)
 
 	_, err := m.DB.Exec(`DELETE FROM bots WHERE id=?`, id)
 	return err
@@ -702,6 +708,10 @@ func (m *BotManager) UpsertBotConfig(cfg models.BotConfig) (models.BotConfig, er
 
 func (m *BotManager) SendText(botID, number, message string) error {
 	number = strings.TrimSpace(strings.TrimPrefix(number, "+"))
+	number = strings.ReplaceAll(number, " ", "")
+	number = strings.ReplaceAll(number, "-", "")
+	number = strings.ReplaceAll(number, "(", "")
+	number = strings.ReplaceAll(number, ")", "")
 	message = strings.TrimSpace(message)
 	if botID == "" || number == "" || message == "" {
 		return errors.New("bot_id, number and message are required")
