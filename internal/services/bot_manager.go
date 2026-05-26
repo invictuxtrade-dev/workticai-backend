@@ -37,6 +37,7 @@ type BotManager struct {
 	Landing *LandingService
 	Funnel  *FunnelService
 	Billing *BillingService
+	Agenda  *AgendaService
 	BotsDir string
 
 	mu       sync.Mutex
@@ -47,13 +48,14 @@ func NewBotManager(db *sql.DB, ai *AIService, botsDir string) *BotManager {
 	_ = os.MkdirAll(botsDir, 0o755)
 
 	return &BotManager{
-	DB:       db,
-	AI:       ai,
-	Landing:  NewLandingService(ai),
-	Funnel:   nil,
-	Billing:  NewBillingService(db),
-	BotsDir:  botsDir,
-	runtimes: map[string]*BotRuntime{},
+		DB:       db,
+		AI:       ai,
+		Landing:  NewLandingService(ai),
+		Funnel:   nil,
+		Billing:  NewBillingService(db),
+		Agenda:   NewAgendaService(db),
+		BotsDir:  botsDir,
+		runtimes: map[string]*BotRuntime{},
 	}
 }
 
@@ -273,9 +275,9 @@ func (m *BotManager) CreateBot(role, clientID, name string) (models.Bot, error) 
 	}
 
 	if m.Billing != nil {
-	if err := m.Billing.CheckLimit(role, clientID, "bots"); err != nil {
-		return models.Bot{}, err
-	}
+		if err := m.Billing.CheckLimit(role, clientID, "bots"); err != nil {
+			return models.Bot{}, err
+		}
 	}
 
 	now := time.Now()
@@ -300,7 +302,7 @@ func (m *BotManager) CreateBot(role, clientID, name string) (models.Bot, error) 
 	}
 
 	if m.Billing != nil && role != "admin" {
-	_ = m.Billing.IncrementUsage(clientID, "bots", 1)
+		_ = m.Billing.IncrementUsage(clientID, "bots", 1)
 	}
 
 	_, _ = m.UpsertBotConfig(models.BotConfig{
@@ -427,6 +429,27 @@ func (m *BotManager) StartBot(id string) error {
 					_ = m.Funnel.TrackEvent(bot.ClientID, id, "", EventLeadQualified, stage)
 				case "closed":
 					_ = m.Funnel.TrackEvent(bot.ClientID, id, "", EventConversion, stage)
+				}
+			}
+
+			if m.Agenda != nil && looksLikeAppointmentIntent(text) {
+				agendaReply, handled := m.HandleAgendaIntent(bot, lead, text)
+
+				if handled && strings.TrimSpace(agendaReply) != "" {
+					targetJID := v.Info.Chat
+
+					_, sendErr := client.SendMessage(context.Background(), targetJID, &waProto.Message{
+						Conversation: proto.String(agendaReply),
+					})
+
+					if sendErr != nil {
+						logger.Errorf("error sending agenda reply to %s: %v", targetJID.String(), sendErr)
+						return
+					}
+
+					_ = m.SaveOutboundMessage(id, chatJID, agendaReply)
+					_ = m.SetLeadAIResult(id, lead.ID, "appointment_intent", text, agendaReply, nil)
+					return
 				}
 			}
 
@@ -1134,4 +1157,168 @@ func detectLeadStage(incoming string, current string) string {
 	}
 
 	return "new"
+}
+
+func looksLikeAppointmentIntent(incoming string) bool {
+	text := strings.ToLower(strings.TrimSpace(incoming))
+
+	keywords := []string{
+		"agenda",
+		"agendar",
+		"cita",
+		"reunión",
+		"reunion",
+		"llamada",
+		"demo",
+		"asesoría",
+		"asesoria",
+		"hablar con alguien",
+		"quiero hablar",
+		"programar",
+		"separar espacio",
+		"reservar",
+		"mañana",
+		"manana",
+		"pasado mañana",
+		"pasado manana",
+		"viernes",
+		"lunes",
+		"martes",
+		"miércoles",
+		"miercoles",
+		"jueves",
+		"sábado",
+		"sabado",
+		"domingo",
+	}
+
+	for _, k := range keywords {
+		if strings.Contains(text, k) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (m *BotManager) HandleAgendaIntent(bot models.Bot, lead models.Lead, incoming string) (string, bool) {
+	if m.Agenda == nil {
+		return "", false
+	}
+
+	settings, err := m.Agenda.GetSettings(bot.ClientID, bot.ID)
+	if err != nil || !settings.Enabled {
+		return "", false
+	}
+
+	preferredAt := detectPreferredDateTime(incoming)
+
+	score := 75
+	if lead.Stage == "hot" {
+		score = 90
+	}
+
+	ap, slots, err := m.Agenda.CreateAutomaticAppointment(AutoAppointmentRequest{
+		ClientID:     bot.ClientID,
+		BotID:        bot.ID,
+		LeadID:       lead.ID,
+		ChatJID:      lead.ChatJID,
+		ContactName:  lead.DisplayName,
+		ContactPhone: lead.Phone,
+		Message:      incoming,
+		PreferredAt:  preferredAt,
+		AISummary:    "El lead mostró intención de agendar una cita desde WhatsApp.",
+		LeadScore:    score,
+	})
+
+	if err != nil {
+		if len(slots) > 0 {
+			var b strings.Builder
+			b.WriteString("Claro 😊 puedo ayudarte a agendar una cita.\n\n")
+			b.WriteString("Tengo estos espacios disponibles:\n\n")
+
+			for i, slot := range slots {
+				b.WriteString(fmt.Sprintf("%d. %s\n", i+1, slot.StartAt.Format("02/01/2006 15:04")))
+			}
+
+			b.WriteString("\nRespóndeme con el horario que prefieres y te lo agendo.")
+			return b.String(), true
+		}
+
+		return "Claro 😊 puedo ayudarte a agendar una cita. ¿Qué día y hora te gustaría?", true
+	}
+
+	reply := fmt.Sprintf(
+		"Perfecto 😊 tu cita quedó agendada.\n\n📅 Fecha: %s\n⏰ Hora: %s\n\nTe enviaremos un recordatorio antes de la cita.",
+		ap.StartAt.Format("02/01/2006"),
+		ap.StartAt.Format("15:04"),
+	)
+
+	if strings.TrimSpace(settings.NotifyWhatsapp) != "" {
+		notifyMsg := fmt.Sprintf(
+			"📅 Nueva cita agendada por Agenda AI\n\nLead: %s\nTeléfono: %s\nFecha: %s\nHora: %s\nBot: %s",
+			ap.ContactName,
+			ap.ContactPhone,
+			ap.StartAt.Format("02/01/2006"),
+			ap.StartAt.Format("15:04"),
+			bot.Name,
+		)
+
+		_ = m.SendText(bot.ID, settings.NotifyWhatsapp, notifyMsg)
+	}
+
+	return reply, true
+}
+
+func detectPreferredDateTime(incoming string) string {
+	text := strings.ToLower(strings.TrimSpace(incoming))
+	now := time.Now()
+
+	hour := 0
+	minute := 0
+
+	for h := 6; h <= 22; h++ {
+		if strings.Contains(text, fmt.Sprintf("%d:", h)) ||
+			strings.Contains(text, fmt.Sprintf("%d ", h)) ||
+			strings.Contains(text, fmt.Sprintf("a las %d", h)) {
+			hour = h
+			break
+		}
+	}
+
+	if hour == 0 {
+		if strings.Contains(text, "mañana") || strings.Contains(text, "manana") {
+			hour = 10
+		} else {
+			return ""
+		}
+	}
+
+	if strings.Contains(text, "media") || strings.Contains(text, ":30") {
+		minute = 30
+	}
+
+	target := now
+
+	switch {
+	case strings.Contains(text, "pasado mañana") || strings.Contains(text, "pasado manana"):
+		target = now.AddDate(0, 0, 2)
+
+	case strings.Contains(text, "mañana") || strings.Contains(text, "manana"):
+		target = now.AddDate(0, 0, 1)
+
+	case strings.Contains(text, "hoy"):
+		target = now
+
+	default:
+		// Si solo dice hora, asumimos hoy si falta más de 2 horas; si no, mañana.
+		candidate := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, time.Local)
+		if candidate.Before(now.Add(2 * time.Hour)) {
+			target = now.AddDate(0, 0, 1)
+		}
+	}
+
+	finalTime := time.Date(target.Year(), target.Month(), target.Day(), hour, minute, 0, 0, time.Local)
+
+	return finalTime.Format(time.RFC3339)
 }
