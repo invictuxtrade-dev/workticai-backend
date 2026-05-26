@@ -174,6 +174,8 @@ func (s *Server) routes() {
 
 	secured.HandleFunc("/agenda/settings", s.handleGetAppointmentSettings).Methods("GET", "OPTIONS")
 	secured.HandleFunc("/agenda/settings", s.handleSaveAppointmentSettings).Methods("PUT", "OPTIONS")
+	secured.HandleFunc("/agenda/slots", s.handleAgendaSlots).Methods("GET", "OPTIONS")
+	secured.HandleFunc("/agenda/check-availability", s.handleCheckAgendaAvailability).Methods("POST", "OPTIONS")
 
 	secured.HandleFunc("/agenda/agents", s.handleListAppointmentAgents).Methods("GET", "OPTIONS")
 	secured.HandleFunc("/agenda/agents", s.handleSaveAppointmentAgent).Methods("POST", "OPTIONS")
@@ -3523,4 +3525,71 @@ func (s *Server) handleDeleteAppointmentAgent(w http.ResponseWriter, r *http.Req
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"success": true})
+}
+
+func (s *Server) handleAgendaSlots(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+
+	clientID := r.URL.Query().Get("client_id")
+	botID := r.URL.Query().Get("bot_id")
+
+	if u.Role != "admin" {
+		clientID = u.ClientID
+	}
+
+	if strings.TrimSpace(botID) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bot_id required"})
+		return
+	}
+
+	slots, err := s.Agenda.NextAvailableSlots(clientID, botID, 8)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, slots)
+}
+
+func (s *Server) handleCheckAgendaAvailability(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+
+	var body struct {
+		ClientID string `json:"client_id"`
+		BotID    string `json:"bot_id"`
+		StartAt  string `json:"start_at"`
+		EndAt    string `json:"end_at"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+
+	if u.Role != "admin" {
+		body.ClientID = u.ClientID
+	}
+
+	startAt, err := time.Parse(time.RFC3339, body.StartAt)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid start_at"})
+		return
+	}
+
+	endAt, err := time.Parse(time.RFC3339, body.EndAt)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid end_at"})
+		return
+	}
+
+	ok, reason, err := s.Agenda.IsAvailable(body.ClientID, body.BotID, startAt, endAt)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"available": ok,
+		"reason":    reason,
+	})
 }
