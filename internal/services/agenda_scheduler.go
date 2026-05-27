@@ -1,11 +1,12 @@
 package services
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strings"
 	"time"
-
+	
 	"go.mau.fi/whatsmeow/types"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"google.golang.org/protobuf/proto"
@@ -170,10 +171,10 @@ func (s *AgendaScheduler) sendWhatsApp(botID, phone, text string) error {
 	jid := types.NewJID(clean, "s.whatsapp.net")
 
 	_, err := rt.Client.SendMessage(
-		nil,
-		jid,
-		&waProto.Message{
-			Conversation: proto.String(text),
+	context.Background(),
+	jid,
+	&waProto.Message{
+		Conversation: proto.String(text),
 		},
 	)
 
