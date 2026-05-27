@@ -551,25 +551,42 @@ func migrate(db *sql.DB) error {
 		updated_at TIMESTAMP NOT NULL
 	);`,
 
-	`CREATE TABLE IF NOT EXISTS appointment_settings (
+		`CREATE TABLE IF NOT EXISTS appointment_settings (
+			id TEXT PRIMARY KEY,
+			client_id TEXT NOT NULL,
+			bot_id TEXT NOT NULL,
+			enabled INTEGER NOT NULL DEFAULT 0,
+			goal TEXT DEFAULT 'sales_call',
+			timezone TEXT DEFAULT 'America/Bogota',
+			duration_mins INTEGER DEFAULT 30,
+			buffer_mins INTEGER DEFAULT 0,
+			available_days TEXT DEFAULT 'mon,tue,wed,thu,fri',
+			start_time TEXT DEFAULT '09:00',
+			end_time TEXT DEFAULT '18:00',
+			notify_email TEXT DEFAULT '',
+			notify_whatsapp TEXT DEFAULT '',
+			auto_confirm INTEGER DEFAULT 1,
+			reminder_before_mins INTEGER DEFAULT 60,
+			followup_no_show_enabled INTEGER DEFAULT 1,
+			created_at TIMESTAMP NOT NULL,
+			updated_at TIMESTAMP NOT NULL
+		);`,
+
+		`CREATE TABLE IF NOT EXISTS appointment_pending (
 		id TEXT PRIMARY KEY,
 		client_id TEXT NOT NULL,
 		bot_id TEXT NOT NULL,
-		enabled INTEGER NOT NULL DEFAULT 0,
-		goal TEXT DEFAULT 'sales_call',
-		timezone TEXT DEFAULT 'America/Bogota',
-		duration_mins INTEGER DEFAULT 30,
-		buffer_mins INTEGER DEFAULT 0,
-		available_days TEXT DEFAULT 'mon,tue,wed,thu,fri',
-		start_time TEXT DEFAULT '09:00',
-		end_time TEXT DEFAULT '18:00',
-		notify_email TEXT DEFAULT '',
-		notify_whatsapp TEXT DEFAULT '',
-		auto_confirm INTEGER DEFAULT 1,
-		reminder_before_mins INTEGER DEFAULT 60,
-		followup_no_show_enabled INTEGER DEFAULT 1,
+		lead_id INTEGER NOT NULL,
+		chat_jid TEXT NOT NULL,
+
+		slot_1 TEXT DEFAULT '',
+		slot_2 TEXT DEFAULT '',
+		slot_3 TEXT DEFAULT '',
+
+		status TEXT NOT NULL DEFAULT 'pending',
+
 		created_at TIMESTAMP NOT NULL,
-		updated_at TIMESTAMP NOT NULL
+		expires_at TIMESTAMP NOT NULL
 	);`,
 
 	`CREATE TABLE IF NOT EXISTS appointment_agents (

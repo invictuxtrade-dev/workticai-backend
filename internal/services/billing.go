@@ -300,8 +300,8 @@ func (b *BillingService) SeedDefaults() error {
 		Name:         "Starter",
 		Slug:         "starter",
 		Description:  "Para negocios que están empezando.",
-		PriceMonthly: 7,
-		PriceYearly:  77,
+		PriceMonthly: 17,
+		PriceYearly:  157,
 
 		Features: `[
 			"1 bot WhatsApp",
@@ -357,8 +357,8 @@ func (b *BillingService) SeedDefaults() error {
 		Name:         "Pro",
 		Slug:         "pro",
 		Description:  "El plan principal para marketers y pymes.",
-		PriceMonthly: 27,
-		PriceYearly:  277,
+		PriceMonthly: 47,
+		PriceYearly:  477,
 
 		Features: `[
 			"Hasta 5 bots",
@@ -416,7 +416,7 @@ func (b *BillingService) SeedDefaults() error {
 		Slug:         "business",
 		Description:  "Para agencias y empresas serias.",
 		PriceMonthly: 97,
-		PriceYearly:  899,
+		PriceYearly:  897,
 
 		Features: `[
 			"Bots altos o ilimitados",

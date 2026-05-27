@@ -85,6 +85,22 @@ type AvailabilitySlot struct {
 	Timezone string    `json:"timezone"`
 }
 
+type PendingAppointment struct {
+	ID        string    `json:"id"`
+	ClientID  string    `json:"client_id"`
+	BotID     string    `json:"bot_id"`
+	LeadID    int64     `json:"lead_id"`
+	ChatJID   string    `json:"chat_jid"`
+
+	Slot1 string `json:"slot_1"`
+	Slot2 string `json:"slot_2"`
+	Slot3 string `json:"slot_3"`
+
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
 type AutoAppointmentRequest struct {
 	ClientID     string `json:"client_id"`
 	BotID        string `json:"bot_id"`
@@ -764,3 +780,71 @@ func (a *AgendaService) CreateAutomaticAppointment(req AutoAppointmentRequest) (
 	return ap, nil, nil
 }
 
+func (a *AgendaService) SavePending(x PendingAppointment) error {
+	_, err := a.DB.Exec(`
+		INSERT INTO appointment_pending (
+			id, client_id, bot_id, lead_id, chat_jid,
+			slot_1, slot_2, slot_3,
+			status, created_at, expires_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		x.ID,
+		x.ClientID,
+		x.BotID,
+		x.LeadID,
+		x.ChatJID,
+		x.Slot1,
+		x.Slot2,
+		x.Slot3,
+		x.Status,
+		x.CreatedAt,
+		x.ExpiresAt,
+	)
+
+	return err
+}
+
+func (a *AgendaService) GetPending(botID, chatJID string) (*PendingAppointment, error) {
+	var x PendingAppointment
+
+	err := a.DB.QueryRow(`
+		SELECT
+			id, client_id, bot_id, lead_id, chat_jid,
+			slot_1, slot_2, slot_3,
+			status, created_at, expires_at
+		FROM appointment_pending
+		WHERE bot_id=?
+		AND chat_jid=?
+		AND status='pending'
+		LIMIT 1
+	`, botID, chatJID).Scan(
+		&x.ID,
+		&x.ClientID,
+		&x.BotID,
+		&x.LeadID,
+		&x.ChatJID,
+		&x.Slot1,
+		&x.Slot2,
+		&x.Slot3,
+		&x.Status,
+		&x.CreatedAt,
+		&x.ExpiresAt,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &x, nil
+}
+
+func (a *AgendaService) CompletePending(id string) error {
+	_, err := a.DB.Exec(`
+		UPDATE appointment_pending
+		SET status='completed'
+		WHERE id=?
+	`, id)
+
+	return err
+}
