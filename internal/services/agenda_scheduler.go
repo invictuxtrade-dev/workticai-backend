@@ -127,7 +127,7 @@ func (s *AgendaScheduler) sendReminderWindow(before time.Duration, label string)
 		msg := fmt.Sprintf(
 			"⏰ Recordatorio de cita\n\nHola %s 👋\nTu cita está programada para: %s.\n\nTe esperamos.",
 			item.ContactName,
-			item.StartAt.Format("02/01/2006 15:04"),
+			startLocal.Format("02/01/2006 15:04"),
 		)
 
 		errLead := s.sendWhatsApp(item.BotID, item.ContactPhone, msg)
@@ -149,7 +149,7 @@ func (s *AgendaScheduler) sendReminderWindow(before time.Duration, label string)
 				"📅 Recordatorio Agenda AI\n\nLa cita con %s será en %s.\nHora: %s",
 				item.ContactName,
 				label,
-				item.StartAt.Format("02/01/2006 15:04"),
+				startLocal.Format("02/01/2006 15:04"),
 			)
 			_ = s.sendWhatsApp(item.BotID, item.NotifyWhatsapp, adminMsg)
 		}
