@@ -395,7 +395,18 @@ func (m *BotManager) StartBot(id string) error {
 			}
 
 			chatJID := v.Info.Chat.String()
-			phone := v.Info.Sender.User
+			// Obtener teléfono REAL desde el chat JID
+			phone := cleanWhatsAppPhone(chatJID)
+
+			// fallback extremo
+			if phone == "" {
+				phone = cleanWhatsAppPhone(v.Info.Sender.String())
+			}
+
+			// evitar IDs internos raros
+			if len(phone) > 13 {
+				phone = ""
+			}
 			displayName := v.Info.PushName
 			text := extractIncomingText(v.Message)
 
@@ -440,7 +451,7 @@ func (m *BotManager) StartBot(id string) error {
 				}
 			}
 
-			// === NUEVO CÓDIGO: Verificar pendientes de agenda ANTES de detectar nueva intención ===
+			// Verificar pendientes de agenda ANTES de detectar nueva intención
 			if m.Agenda != nil {
 				pending, _ := m.Agenda.GetPending(id, chatJID)
 
@@ -470,12 +481,17 @@ func (m *BotManager) StartBot(id string) error {
 
 							targetJID := v.Info.Chat
 
+							contactPhone := phone
+							if contactPhone == "" {
+								contactPhone = "No disponible"
+							}
+
 							_, createErr := m.Agenda.CreateAppointment(Appointment{
 								ClientID:     bot.ClientID,
 								BotID:        id,
 								LeadID:       lead.ID,
 								ContactName:  lead.DisplayName,
-								ContactPhone: phone,
+								ContactPhone: contactPhone,
 								Title:        "Cita IA",
 								StartAt:      startAt,
 								EndAt:        endAt,
@@ -487,43 +503,42 @@ func (m *BotManager) StartBot(id string) error {
 								_ = m.Agenda.CompletePending(pending.ID)
 
 								if strings.TrimSpace(settings.NotifyWhatsapp) != "" {
-
-								notifyMsg := fmt.Sprintf(
-									"📅 Nueva cita agendada por Agenda AI\n\nLead: %s\nTeléfono: %s\nFecha: %s\nHora: %s\nBot: %s",
-									lead.DisplayName,
-									phone,
-									startAt.Format("02/01/2006"),
-									startAt.Format("15:04"),
-									bot.Name,
-								)
-
-								cleanNotifyPhone := strings.TrimSpace(settings.NotifyWhatsapp)
-								cleanNotifyPhone = strings.TrimPrefix(cleanNotifyPhone, "+")
-								cleanNotifyPhone = strings.ReplaceAll(cleanNotifyPhone, " ", "")
-								cleanNotifyPhone = strings.ReplaceAll(cleanNotifyPhone, "-", "")
-								cleanNotifyPhone = strings.ReplaceAll(cleanNotifyPhone, "(", "")
-								cleanNotifyPhone = strings.ReplaceAll(cleanNotifyPhone, ")", "")
-
-								logger.Infof(
-									"sending appointment notification bot=%s to=%s raw=%s",
-									id,
-									cleanNotifyPhone,
-									settings.NotifyWhatsapp,
-								)
-
-								if err := m.SendText(id, cleanNotifyPhone, notifyMsg); err != nil {
-									logger.Errorf(
-										"error sending appointment notification to %s: %v",
-										cleanNotifyPhone,
-										err,
+									notifyMsg := fmt.Sprintf(
+										"📅 Nueva cita agendada por Agenda AI\n\nLead: %s\nTeléfono: %s\nFecha: %s\nHora: %s\nBot: %s",
+										lead.DisplayName,
+										contactPhone,
+										startAt.Format("02/01/2006"),
+										startAt.Format("15:04"),
+										bot.Name,
 									)
-								} else {
+
+									cleanNotifyPhone := strings.TrimSpace(settings.NotifyWhatsapp)
+									cleanNotifyPhone = strings.TrimPrefix(cleanNotifyPhone, "+")
+									cleanNotifyPhone = strings.ReplaceAll(cleanNotifyPhone, " ", "")
+									cleanNotifyPhone = strings.ReplaceAll(cleanNotifyPhone, "-", "")
+									cleanNotifyPhone = strings.ReplaceAll(cleanNotifyPhone, "(", "")
+									cleanNotifyPhone = strings.ReplaceAll(cleanNotifyPhone, ")", "")
+
 									logger.Infof(
-										"appointment notification sent to %s",
+										"sending appointment notification bot=%s to=%s raw=%s",
+										id,
 										cleanNotifyPhone,
+										settings.NotifyWhatsapp,
 									)
+
+									if err := m.SendText(id, cleanNotifyPhone, notifyMsg); err != nil {
+										logger.Errorf(
+											"error sending appointment notification to %s: %v",
+											cleanNotifyPhone,
+											err,
+										)
+									} else {
+										logger.Infof(
+											"appointment notification sent to %s",
+											cleanNotifyPhone,
+										)
+									}
 								}
-							}
 
 								reply := fmt.Sprintf(
 									"✅ Perfecto %s.\n\nTu cita quedó agendada para:\n%s",
@@ -549,7 +564,7 @@ func (m *BotManager) StartBot(id string) error {
 				}
 			}
 
-			// === AGENDA INTENT DESPUÉS DE VERIFICAR PENDIENTES ===
+			// AGENDA INTENT DESPUÉS DE VERIFICAR PENDIENTES
 			if m.Agenda != nil && looksLikeAppointmentIntent(text) {
 				agendaReply, handled := m.HandleAgendaIntent(bot, lead, text)
 
@@ -1178,7 +1193,28 @@ func (m *BotManager) DebugBotLabel(botID string) string {
 	return fmt.Sprintf("bot:%s", botID)
 }
 
-// === VERSIÓN MODIFICADA DE HandleAgendaIntent CON GUARDADO DE SLOTS ===
+// Helper para limpiar números de teléfono de WhatsApp
+func cleanWhatsAppPhone(raw string) string {
+	raw = strings.TrimSpace(raw)
+	raw = strings.TrimPrefix(raw, "+")
+	raw = strings.Split(raw, "@")[0]
+	raw = strings.Split(raw, ":")[0]
+	raw = strings.ReplaceAll(raw, " ", "")
+	raw = strings.ReplaceAll(raw, "-", "")
+	raw = strings.ReplaceAll(raw, "(", "")
+	raw = strings.ReplaceAll(raw, ")", "")
+
+	onlyDigits := ""
+	for _, r := range raw {
+		if r >= '0' && r <= '9' {
+			onlyDigits += string(r)
+		}
+	}
+
+	return onlyDigits
+}
+
+// Versión modificada de HandleAgendaIntent CON GUARDADO DE SLOTS
 func (m *BotManager) HandleAgendaIntent(bot models.Bot, lead models.Lead, incoming string) (string, bool) {
 	if m.Agenda == nil {
 		return "", false
@@ -1211,7 +1247,7 @@ func (m *BotManager) HandleAgendaIntent(bot models.Bot, lead models.Lead, incomi
 
 	if err != nil {
 		if len(slots) >= 3 {
-			// === GUARDAR LOS SLOTS EN PENDING ===
+			// GUARDAR LOS SLOTS EN PENDING
 			pendingID := uuid.NewString()
 			pending := PendingAppointment{
 				ID:        pendingID,
@@ -1259,10 +1295,9 @@ func (m *BotManager) HandleAgendaIntent(bot models.Bot, lead models.Lead, incomi
 			ap.StartAt.Format("15:04"),
 			bot.Name,
 		)
-
 	}
 
-	return reply, true 
+	return reply, true
 }
 
 func inferBusinessType(cfg models.BotConfig) string {
