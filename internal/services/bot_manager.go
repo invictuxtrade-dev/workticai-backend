@@ -1242,10 +1242,10 @@ func (m *BotManager) HandleAgendaIntent(bot models.Bot, lead models.Lead, incomi
 			ap.StartAt.Format("15:04"),
 			bot.Name,
 		)
-
+		_ = notifyMsg // Si quieres usar este mensaje, necesitas agregar la lógica para enviarlo
 	}
 
-	return reply, true 
+	return reply, true
 }
 
 func inferBusinessType(cfg models.BotConfig) string {
