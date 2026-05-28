@@ -404,9 +404,25 @@ func (m *BotManager) StartBot(id string) error {
 			}
 
 			// evitar IDs internos raros
-			if len(phone) > 13 {
-				phone = ""
-			}
+			if strings.HasPrefix(phone, "235") {
+	phone = ""
+}
+
+if phone == "" {
+	phone = cleanWhatsAppPhone(v.Info.Sender.User)
+}
+
+if strings.HasPrefix(phone, "235") {
+	phone = ""
+}
+
+logger.Infof(
+	"phone debug chatJID=%s senderUser=%s senderString=%s finalPhone=%s",
+	chatJID,
+	v.Info.Sender.User,
+	v.Info.Sender.String(),
+	phone,
+)
 			displayName := v.Info.PushName
 			text := extractIncomingText(v.Message)
 
