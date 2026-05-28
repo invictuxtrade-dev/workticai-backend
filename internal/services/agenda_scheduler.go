@@ -117,6 +117,13 @@ func (s *AgendaScheduler) sendReminderWindow(before time.Duration, label string)
 	}
 
 	for _, item := range items {
+		loc, err := time.LoadLocation(item.Timezone)
+		if err != nil || item.Timezone == "" {
+			loc, _ = time.LoadLocation("America/Bogota")
+		}
+
+		startLocal := item.StartAt.In(loc)
+		
 		msg := fmt.Sprintf(
 			"⏰ Recordatorio de cita\n\nHola %s 👋\nTu cita está programada para: %s.\n\nTe esperamos.",
 			item.ContactName,
