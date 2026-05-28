@@ -1245,7 +1245,7 @@ func (m *BotManager) HandleAgendaIntent(bot models.Bot, lead models.Lead, incomi
 
 	}
 
-	return reply, true
+	return reply, true 
 }
 
 func inferBusinessType(cfg models.BotConfig) string {
