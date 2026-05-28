@@ -415,14 +415,6 @@ if phone == "" {
 if strings.HasPrefix(phone, "235") {
 	phone = ""
 }
-
-logger.Infof(
-	"phone debug chatJID=%s senderUser=%s senderString=%s finalPhone=%s",
-	chatJID,
-	v.Info.Sender.User,
-	v.Info.Sender.String(),
-	phone,
-)
 			displayName := v.Info.PushName
 			text := extractIncomingText(v.Message)
 
@@ -497,15 +489,10 @@ logger.Infof(
 
 							targetJID := v.Info.Chat
 
-							contactPhone := strings.TrimSpace(lead.Phone)
-
-if contactPhone == "" || strings.Contains(contactPhone, "@lid") || strings.HasPrefix(contactPhone, "235") {
-	contactPhone = cleanWhatsAppPhone(chatJID)
-}
-
-if contactPhone == "" || strings.HasPrefix(contactPhone, "235") {
-	contactPhone = "No disponible"
-}
+							contactPhone := phone
+							if contactPhone == "" {
+								contactPhone = "No disponible"
+							}
 
 							_, createErr := m.Agenda.CreateAppointment(Appointment{
 								ClientID:     bot.ClientID,
