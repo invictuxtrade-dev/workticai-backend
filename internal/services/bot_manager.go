@@ -475,7 +475,7 @@ func (m *BotManager) StartBot(id string) error {
 								BotID:        id,
 								LeadID:       lead.ID,
 								ContactName:  lead.DisplayName,
-								ContactPhone: lead.Phone,
+								ContactPhone: phone,
 								Title:        "Cita IA",
 								StartAt:      startAt,
 								EndAt:        endAt,
@@ -491,7 +491,7 @@ func (m *BotManager) StartBot(id string) error {
 								notifyMsg := fmt.Sprintf(
 									"📅 Nueva cita agendada por Agenda AI\n\nLead: %s\nTeléfono: %s\nFecha: %s\nHora: %s\nBot: %s",
 									lead.DisplayName,
-									lead.Phone,
+									phone,
 									startAt.Format("02/01/2006"),
 									startAt.Format("15:04"),
 									bot.Name,
