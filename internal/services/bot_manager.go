@@ -486,31 +486,32 @@ func (m *BotManager) StartBot(id string) error {
 							if createErr == nil {
 								_ = m.Agenda.CompletePending(pending.ID)
 
+								// === NOTIFICACIÓN ACTUALIZADA ===
 								if strings.TrimSpace(settings.NotifyWhatsapp) != "" {
-								notifyMsg := fmt.Sprintf(
-								"📅 Nueva cita agendada por Agenda AI\n\nLead: %s\nTeléfono: %s\nFecha: %s\nHora: %s\nBot: %s",
-								lead.DisplayName,
-								lead.Phone,
-								startAt.Format("02/01/2006"),
-								startAt.Format("15:04"),
-								bot.Name,
-							)
+									notifyPhone := strings.TrimSpace(settings.NotifyWhatsapp)
+									notifyPhone = strings.TrimPrefix(notifyPhone, "+")
+									notifyPhone = strings.ReplaceAll(notifyPhone, " ", "")
+									notifyPhone = strings.ReplaceAll(notifyPhone, "-", "")
+									notifyPhone = strings.ReplaceAll(notifyPhone, "(", "")
+									notifyPhone = strings.ReplaceAll(notifyPhone, ")", "")
 
-	cleanNotifyPhone := strings.TrimSpace(settings.NotifyWhatsapp)
-cleanNotifyPhone = strings.TrimPrefix(cleanNotifyPhone, "+")
-cleanNotifyPhone = strings.ReplaceAll(cleanNotifyPhone, " ", "")
-cleanNotifyPhone = strings.ReplaceAll(cleanNotifyPhone, "-", "")
-cleanNotifyPhone = strings.ReplaceAll(cleanNotifyPhone, "(", "")
-cleanNotifyPhone = strings.ReplaceAll(cleanNotifyPhone, ")", "")
+									notifyMsg := fmt.Sprintf(
+										"📅 Nueva cita agendada por Agenda AI\n\nLead: %s\nTeléfono: %s\nFecha: %s\nHora: %s\nBot: %s",
+										lead.DisplayName,
+										lead.Phone,
+										startAt.Format("02/01/2006"),
+										startAt.Format("15:04"),
+										bot.Name,
+									)
 
-logger.Infof("sending appointment notification bot=%s to=%s raw=%s", id, cleanNotifyPhone, settings.NotifyWhatsapp)
+									logger.Infof("agenda notification using SendText bot=%s to=%s", id, notifyPhone)
 
-if err := m.SendText(id, cleanNotifyPhone, notifyMsg); err != nil {
-	logger.Errorf("error sending appointment notification to %s: %v", cleanNotifyPhone, err)
-} else {
-	logger.Infof("appointment notification sent to %s", cleanNotifyPhone)
-}
-						}
+									if err := m.SendText(id, notifyPhone, notifyMsg); err != nil {
+										logger.Errorf("agenda notification SendText failed to %s: %v", notifyPhone, err)
+									} else {
+										logger.Infof("agenda notification SendText sent to %s", notifyPhone)
+									}
+								}
 
 								reply := fmt.Sprintf(
 									"✅ Perfecto %s.\n\nTu cita quedó agendada para:\n%s",
