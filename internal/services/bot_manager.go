@@ -506,6 +506,10 @@ cleanNotifyPhone = strings.ReplaceAll(cleanNotifyPhone, ")", "")
 logger.Infof("sending appointment notification bot=%s to=%s raw=%s", id, cleanNotifyPhone, settings.NotifyWhatsapp)
 
 if err := m.SendText(id, cleanNotifyPhone, notifyMsg); err != nil {
+	logger.Errorf("error sending appointment notification to %s: %v", cleanNotifyPhone, err)
+} else {
+	logger.Infof("appointment notification sent to %s", cleanNotifyPhone)
+}
 						}
 
 								reply := fmt.Sprintf(
@@ -1243,9 +1247,10 @@ func (m *BotManager) HandleAgendaIntent(bot models.Bot, lead models.Lead, incomi
 			bot.Name,
 		)
 
+		_ = m.SendText(bot.ID, settings.NotifyWhatsapp, notifyMsg)
 	}
 
-	return reply, true 
+	return reply, true
 }
 
 func inferBusinessType(cfg models.BotConfig) string {
