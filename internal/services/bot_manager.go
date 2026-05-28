@@ -484,32 +484,23 @@ func (m *BotManager) StartBot(id string) error {
 							})
 
 							if createErr == nil {
-	_ = m.Agenda.CompletePending(pending.ID)
+								_ = m.Agenda.CompletePending(pending.ID)
 
-	if strings.TrimSpace(settings.NotifyWhatsapp) != "" {
-		notifyMsg := fmt.Sprintf(
-			"📅 Nueva cita agendada por Agenda AI\n\nLead: %s\nTeléfono: %s\nFecha: %s\nHora: %s\nBot: %s",
-			lead.DisplayName,
-			lead.Phone,
-			startAt.Format("02/01/2006"),
-			startAt.Format("15:04"),
-			bot.Name,
-		)
-
-		if err := m.SendText(id, settings.NotifyWhatsapp, notifyMsg); err != nil {
-			logger.Errorf("error sending appointment notification to %s: %v", settings.NotifyWhatsapp, err)
-		}
-	}
-
-	reply := fmt.Sprintf(
-		"✅ Perfecto %s.\n\nTu cita quedó agendada para:\n%s",
-		lead.DisplayName,
-		startAt.Format("02 Jan 2006 03:04 PM"),
-	)
+								if strings.TrimSpace(settings.NotifyWhatsapp) != "" {
+								notifyMsg := fmt.Sprintf(
+								"📅 Nueva cita agendada por Agenda AI\n\nLead: %s\nTeléfono: %s\nFecha: %s\nHora: %s\nBot: %s",
+								lead.DisplayName,
+								lead.Phone,
+								startAt.Format("02/01/2006"),
+								startAt.Format("15:04"),
+								bot.Name,
+							)
 
 							if err := m.SendText(id, settings.NotifyWhatsapp, notifyMsg); err != nil {
-								logger.Errorf("error sending appointment notification: %v", err)
-							}
+	logger.Errorf("error sending appointment notification to %s: %v", settings.NotifyWhatsapp, err)
+} else {
+	logger.Infof("appointment notification sent to %s", settings.NotifyWhatsapp)
+}
 						}
 
 								reply := fmt.Sprintf(
