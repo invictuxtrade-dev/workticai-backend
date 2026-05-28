@@ -1251,7 +1251,7 @@ func (m *BotManager) HandleAgendaIntent(bot models.Bot, lead models.Lead, incomi
 	)
 
 	if strings.TrimSpace(settings.NotifyWhatsapp) != "" {
-		notifyMsg := fmt.Sprintf(
+		_ = fmt.Sprintf(
 			"📅 Nueva cita agendada por Agenda AI\n\nLead: %s\nTeléfono: %s\nFecha: %s\nHora: %s\nBot: %s",
 			ap.ContactName,
 			ap.ContactPhone,
