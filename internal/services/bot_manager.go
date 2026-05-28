@@ -59,92 +59,6 @@ func NewBotManager(db *sql.DB, ai *AIService, botsDir string) *BotManager {
 	}
 }
 
-// formatPhoneForWhatsApp - Formatea un número de teléfono para WhatsApp correctamente
-func formatPhoneForWhatsApp(phone string) string {
-	if phone == "" {
-		return ""
-	}
-	
-	// Limpiar el número
-	phone = strings.TrimSpace(phone)
-	phone = strings.ReplaceAll(phone, " ", "")
-	phone = strings.ReplaceAll(phone, "-", "")
-	phone = strings.ReplaceAll(phone, "(", "")
-	phone = strings.ReplaceAll(phone, ")", "")
-	phone = strings.ReplaceAll(phone, ".", "")
-	
-	// Eliminar cualquier prefijo duplicado
-	for strings.HasPrefix(phone, "+") {
-		phone = strings.TrimPrefix(phone, "+")
-	}
-	
-	// Asegurar que solo tenga dígitos
-	digits := ""
-	for _, r := range phone {
-		if r >= '0' && r <= '9' {
-			digits += string(r)
-		}
-	}
-	
-	// Si no hay dígitos, retornar vacío
-	if digits == "" {
-		return ""
-	}
-	
-	// Agregar el prefijo + para WhatsApp
-	return "+" + digits
-}
-
-// cleanPhoneForStorage - Limpia el teléfono para almacenar en BD (sin formato)
-func cleanPhoneForStorage(phone string) string {
-	if phone == "" {
-		return ""
-	}
-	
-	phone = strings.TrimSpace(phone)
-	phone = strings.ReplaceAll(phone, " ", "")
-	phone = strings.ReplaceAll(phone, "-", "")
-	phone = strings.ReplaceAll(phone, "(", "")
-	phone = strings.ReplaceAll(phone, ")", "")
-	phone = strings.ReplaceAll(phone, ".", "")
-	phone = strings.TrimPrefix(phone, "+")
-	
-	// Solo dígitos
-	digits := ""
-	for _, r := range phone {
-		if r >= '0' && r <= '9' {
-			digits += string(r)
-		}
-	}
-	
-	return digits
-}
-
-// cleanWhatsAppPhone - Limpia número de teléfono de JID de WhatsApp
-func cleanWhatsAppPhone(raw string) string {
-	if raw == "" {
-		return ""
-	}
-	
-	raw = strings.TrimSpace(raw)
-	raw = strings.TrimPrefix(raw, "+")
-	raw = strings.Split(raw, "@")[0]
-	raw = strings.Split(raw, ":")[0]
-	raw = strings.ReplaceAll(raw, " ", "")
-	raw = strings.ReplaceAll(raw, "-", "")
-	raw = strings.ReplaceAll(raw, "(", "")
-	raw = strings.ReplaceAll(raw, ")", "")
-	
-	onlyDigits := ""
-	for _, r := range raw {
-		if r >= '0' && r <= '9' {
-			onlyDigits += string(r)
-		}
-	}
-	
-	return onlyDigits
-}
-
 func (m *BotManager) AutoStartBots() error {
 	rows, err := m.DB.Query(`SELECT id FROM bots`)
 	if err != nil {
@@ -215,15 +129,11 @@ func (m *BotManager) ListClients() ([]models.Client, error) {
 
 func (m *BotManager) CreateClient(name, email, phone, plan string) (models.Client, error) {
 	now := time.Now()
-	
-	// Limpiar y formatear el teléfono para almacenamiento
-	cleanPhone := cleanPhoneForStorage(phone)
-	
 	c := models.Client{
 		ID:        uuid.NewString(),
 		Name:      strings.TrimSpace(name),
 		Email:     strings.TrimSpace(email),
-		Phone:     cleanPhone,
+		Phone:     strings.TrimSpace(phone),
 		Plan:      strings.TrimSpace(plan),
 		Status:    "active",
 		CreatedAt: now,
@@ -241,9 +151,6 @@ func (m *BotManager) CreateClient(name, email, phone, plan string) (models.Clien
 }
 
 func (m *BotManager) UpdateClient(c models.Client) error {
-	// Limpiar el teléfono antes de actualizar
-	c.Phone = cleanPhoneForStorage(c.Phone)
-	
 	_, err := m.DB.Exec(
 		`UPDATE clients SET name=?, email=?, phone=?, plan=?, status=?, updated_at=? WHERE id=?`,
 		c.Name, c.Email, c.Phone, c.Plan, c.Status, time.Now(), c.ID,
@@ -488,18 +395,25 @@ func (m *BotManager) StartBot(id string) error {
 			}
 
 			chatJID := v.Info.Chat.String()
-			// Obtener teléfono REAL desde el chat JID
-			phone := cleanWhatsAppPhone(chatJID)
 
-			// fallback extremo
-			if phone == "" {
-				phone = cleanWhatsAppPhone(v.Info.Sender.String())
-			}
+phone := m.ResolveRealPhoneFromMessage(client, v)
 
-			if phone == "" {
-				phone = cleanWhatsAppPhone(v.Info.Sender.User)
-			}
+logger.Infof(
+	"phone resolved chat=%s sender=%s senderAlt=%s recipientAlt=%s finalPhone=%s",
+	v.Info.Chat.String(),
+	v.Info.Sender.String(),
+	v.Info.SenderAlt.String(),
+	v.Info.RecipientAlt.String(),
+	phone,
+)
 
+if phone == "" {
+	phone = cleanWhatsAppPhone(v.Info.Sender.User)
+}
+
+if strings.HasPrefix(phone, "235") {
+	phone = ""
+}
 			displayName := v.Info.PushName
 			text := extractIncomingText(v.Message)
 
@@ -605,31 +519,31 @@ func (m *BotManager) StartBot(id string) error {
 										bot.Name,
 									)
 
-									// Formatear el número de teléfono para WhatsApp correctamente
-									notifyPhone := formatPhoneForWhatsApp(settings.NotifyWhatsapp)
-									
-									if notifyPhone == "" {
-										logger.Errorf("invalid notification phone number: %s", settings.NotifyWhatsapp)
+									cleanNotifyPhone := strings.TrimSpace(settings.NotifyWhatsapp)
+									cleanNotifyPhone = strings.TrimPrefix(cleanNotifyPhone, "+")
+									cleanNotifyPhone = strings.ReplaceAll(cleanNotifyPhone, " ", "")
+									cleanNotifyPhone = strings.ReplaceAll(cleanNotifyPhone, "-", "")
+									cleanNotifyPhone = strings.ReplaceAll(cleanNotifyPhone, "(", "")
+									cleanNotifyPhone = strings.ReplaceAll(cleanNotifyPhone, ")", "")
+
+									logger.Infof(
+										"sending appointment notification bot=%s to=%s raw=%s",
+										id,
+										cleanNotifyPhone,
+										settings.NotifyWhatsapp,
+									)
+
+									if err := m.SendText(id, cleanNotifyPhone, notifyMsg); err != nil {
+										logger.Errorf(
+											"error sending appointment notification to %s: %v",
+											cleanNotifyPhone,
+											err,
+										)
 									} else {
 										logger.Infof(
-											"sending appointment notification bot=%s to=%s raw=%s",
-											id,
-											notifyPhone,
-											settings.NotifyWhatsapp,
+											"appointment notification sent to %s",
+											cleanNotifyPhone,
 										)
-
-										if err := m.SendText(id, notifyPhone, notifyMsg); err != nil {
-											logger.Errorf(
-												"error sending appointment notification to %s: %v",
-												notifyPhone,
-												err,
-											)
-										} else {
-											logger.Infof(
-												"appointment notification sent successfully to %s",
-												notifyPhone,
-											)
-										}
 									}
 								}
 
@@ -926,90 +840,74 @@ func (m *BotManager) UpsertBotConfig(cfg models.BotConfig) (models.BotConfig, er
 	return cfg, nil
 }
 
-// SendText - Envía un mensaje de texto a través del bot de WhatsApp
 func (m *BotManager) SendText(botID, number, message string) error {
-	if botID == "" {
-		return errors.New("bot_id is required")
-	}
-	
-	// Formatear el número para WhatsApp
-	formattedNumber := formatPhoneForWhatsApp(number)
-	if formattedNumber == "" {
-		return fmt.Errorf("invalid phone number: %s", number)
-	}
-	
+	number = strings.TrimSpace(strings.TrimPrefix(number, "+"))
+	number = strings.ReplaceAll(number, " ", "")
+	number = strings.ReplaceAll(number, "-", "")
+	number = strings.ReplaceAll(number, "(", "")
+	number = strings.ReplaceAll(number, ")", "")
 	message = strings.TrimSpace(message)
-	if message == "" {
-		return errors.New("message is required")
+	if botID == "" || number == "" || message == "" {
+		return errors.New("bot_id, number and message are required")
 	}
-	
+
 	m.mu.Lock()
 	rt := m.runtimes[botID]
 	m.mu.Unlock()
-	
-	if rt == nil || rt.Client == nil {
-		return fmt.Errorf("bot %s not found or not initialized", botID)
+
+	if rt == nil || rt.Client == nil || !rt.Client.IsConnected() {
+		return errors.New("bot not connected to WhatsApp")
 	}
-	
-	if !rt.Client.IsConnected() {
-		return fmt.Errorf("bot %s is not connected to WhatsApp", botID)
-	}
-	
-	// Parsear el JID
-	jid, err := types.ParseJID(formattedNumber)
-	if err != nil {
-		return fmt.Errorf("failed to parse JID for %s: %v", formattedNumber, err)
-	}
-	
-	// Enviar el mensaje
-	_, err = rt.Client.SendMessage(context.Background(), jid, &waProto.Message{
+
+	jid := types.NewJID(number, types.DefaultUserServer)
+	_, err := rt.Client.SendMessage(context.Background(), jid, &waProto.Message{
 		Conversation: proto.String(message),
 	})
 	if err != nil {
-		return fmt.Errorf("failed to send message: %v", err)
+		return err
 	}
-	
-	// Guardar el mensaje en la base de datos
+
 	chatJID := jid.String()
 	now := time.Now()
-	
-	// Verificar si existe el lead
+
 	lead, err := m.findLeadByChat(botID, chatJID)
 	if err == sql.ErrNoRows {
-		// Crear un nuevo lead
-		_, err = m.DB.Exec(`
+		res, err := m.DB.Exec(`
 			INSERT INTO leads (
 				bot_id, chat_jid, display_name, phone, stage, last_intent, summary, tags,
 				last_inbound_text, last_reply_text, followup_count, next_followup_at,
 				created_at, updated_at, last_message_at
 			) VALUES (?, ?, ?, ?, 'new', '', '', '', '', ?, 0, NULL, ?, ?, ?)
-		`, botID, chatJID, number, cleanPhoneForStorage(number), message, now, now, now)
+		`, botID, chatJID, number, number, message, now, now, now)
 		if err != nil {
-			return fmt.Errorf("failed to create lead: %v", err)
+			return err
 		}
-	} else if err != nil {
-		return fmt.Errorf("failed to find lead: %v", err)
+		leadID, _ := res.LastInsertId()
+		_, err = m.DB.Exec(
+			`INSERT INTO messages (bot_id, chat_jid, direction, content, created_at) VALUES (?, ?, 'outbound', ?, ?)`,
+			botID, chatJID, message, now,
+		)
+		if err != nil {
+			return err
+		}
+		_, _ = m.DB.Exec(`UPDATE leads SET id=id WHERE id=?`, leadID)
+		return nil
 	}
-	
-	// Guardar el mensaje
+	if err != nil {
+		return err
+	}
+
 	_, err = m.DB.Exec(
 		`INSERT INTO messages (bot_id, chat_jid, direction, content, created_at) VALUES (?, ?, 'outbound', ?, ?)`,
 		botID, chatJID, message, now,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to save message: %v", err)
+		return err
 	}
-	
-	// Actualizar el lead si existe
-	if lead.ID > 0 {
-		_, err = m.DB.Exec(`UPDATE leads SET last_reply_text=?, updated_at=?, last_message_at=? WHERE id=?`,
-			message, now, now, lead.ID)
-		if err != nil {
-			return fmt.Errorf("failed to update lead: %v", err)
-		}
-	}
-	
-	return nil
+
+	_, err = m.DB.Exec(`UPDATE leads SET last_reply_text=?, updated_at=?, last_message_at=? WHERE id=?`,
+		message, now, now, lead.ID)
+	return err
 }
 
 func (m *BotManager) ListInboxLeads(clientID, botID string) ([]models.Lead, error) {
@@ -1143,14 +1041,41 @@ func (m *BotManager) LeadMessages(botID string, leadID int64) ([]models.Message,
 
 func (m *BotManager) SendToLead(botID string, leadID int64, message string) error {
 	var chatJID string
-	var phone string
-	err := m.DB.QueryRow(`SELECT chat_jid, phone FROM leads WHERE id=? AND bot_id=?`, leadID, botID).Scan(&chatJID, &phone)
+	err := m.DB.QueryRow(`SELECT chat_jid FROM leads WHERE id=? AND bot_id=?`, leadID, botID).Scan(&chatJID)
 	if err != nil {
 		return err
 	}
-	
-	// Usar el número de teléfono del lead para enviar el mensaje
-	return m.SendText(botID, phone, message)
+
+	m.mu.Lock()
+	rt := m.runtimes[botID]
+	m.mu.Unlock()
+
+	if rt == nil || rt.Client == nil || !rt.Client.IsConnected() {
+		return errors.New("bot not connected to WhatsApp")
+	}
+
+	jid, err := types.ParseJID(chatJID)
+	if err != nil {
+		return err
+	}
+
+	msg := strings.TrimSpace(message)
+	if msg == "" {
+		return errors.New("message is required")
+	}
+
+	_, err = rt.Client.SendMessage(context.Background(), jid, &waProto.Message{
+		Conversation: proto.String(msg),
+	})
+	if err != nil {
+		return err
+	}
+
+	_, err = m.DB.Exec(
+		`INSERT INTO messages (bot_id, chat_jid, direction, content, created_at) VALUES (?, ?, 'outbound', ?, ?)`,
+		botID, chatJID, msg, time.Now(),
+	)
+	return err
 }
 
 func (m *BotManager) findLeadByChat(botID, chatJID string) (models.Lead, error) {
@@ -1275,6 +1200,28 @@ func (m *BotManager) DebugBotLabel(botID string) string {
 	return fmt.Sprintf("bot:%s", botID)
 }
 
+// Helper para limpiar números de teléfono de WhatsApp
+func cleanWhatsAppPhone(raw string) string {
+	raw = strings.TrimSpace(raw)
+	raw = strings.TrimPrefix(raw, "+")
+	raw = strings.Split(raw, "@")[0]
+	raw = strings.Split(raw, ":")[0]
+	raw = strings.ReplaceAll(raw, " ", "")
+	raw = strings.ReplaceAll(raw, "-", "")
+	raw = strings.ReplaceAll(raw, "(", "")
+	raw = strings.ReplaceAll(raw, ")", "")
+
+	onlyDigits := ""
+	for _, r := range raw {
+		if r >= '0' && r <= '9' {
+			onlyDigits += string(r)
+		}
+	}
+
+	return onlyDigits
+}
+
+// Versión modificada de HandleAgendaIntent CON GUARDADO DE SLOTS
 func (m *BotManager) HandleAgendaIntent(bot models.Bot, lead models.Lead, incoming string) (string, bool) {
 	if m.Agenda == nil {
 		return "", false
@@ -1307,6 +1254,7 @@ func (m *BotManager) HandleAgendaIntent(bot models.Bot, lead models.Lead, incomi
 
 	if err != nil {
 		if len(slots) >= 3 {
+			// GUARDAR LOS SLOTS EN PENDING
 			pendingID := uuid.NewString()
 			pending := PendingAppointment{
 				ID:        pendingID,
@@ -1344,6 +1292,17 @@ func (m *BotManager) HandleAgendaIntent(bot models.Bot, lead models.Lead, incomi
 		ap.StartAt.Format("02/01/2006"),
 		ap.StartAt.Format("15:04"),
 	)
+
+	if strings.TrimSpace(settings.NotifyWhatsapp) != "" {
+		_ = fmt.Sprintf(
+			"📅 Nueva cita agendada por Agenda AI\n\nLead: %s\nTeléfono: %s\nFecha: %s\nHora: %s\nBot: %s",
+			ap.ContactName,
+			ap.ContactPhone,
+			ap.StartAt.Format("02/01/2006"),
+			ap.StartAt.Format("15:04"),
+			bot.Name,
+		)
+	}
 
 	return reply, true
 }
@@ -1543,4 +1502,67 @@ func detectPreferredDateTime(incoming string) string {
 	finalTime := time.Date(target.Year(), target.Month(), target.Day(), hour, minute, 0, 0, time.Local)
 
 	return finalTime.Format(time.RFC3339)
+}
+
+func (m *BotManager) ResolveRealPhoneFromMessage(client *whatsmeow.Client, v *events.Message) string {
+	candidates := []string{
+		v.Info.Chat.String(),
+		v.Info.Sender.String(),
+		v.Info.SenderAlt.String(),
+		v.Info.RecipientAlt.String(),
+		v.Info.Sender.User,
+	}
+
+	for _, c := range candidates {
+		phone := cleanWhatsAppPhone(c)
+		if isValidRealPhone(phone) {
+			return phone
+		}
+	}
+
+	lidCandidates := []types.JID{
+		v.Info.Chat,
+		v.Info.Sender,
+		v.Info.SenderAlt,
+		v.Info.RecipientAlt,
+	}
+
+	for _, jid := range lidCandidates {
+		if jid.IsEmpty() {
+			continue
+		}
+
+		if jid.Server == types.DefaultUserServer {
+			phone := cleanWhatsAppPhone(jid.User)
+			if isValidRealPhone(phone) {
+				return phone
+			}
+		}
+
+		if jid.Server == "lid" && client != nil && client.Store != nil && client.Store.LIDs != nil {
+			pnJID, err := client.Store.LIDs.GetPNForLID(context.Background(), jid)
+			if err == nil && !pnJID.IsEmpty() {
+				phone := cleanWhatsAppPhone(pnJID.String())
+				if isValidRealPhone(phone) {
+					return phone
+				}
+			}
+		}
+	}
+
+	return ""
+}
+
+func isValidRealPhone(phone string) bool {
+	phone = cleanWhatsAppPhone(phone)
+
+	if len(phone) < 10 || len(phone) > 13 {
+		return false
+	}
+
+	if strings.HasPrefix(phone, "235") {
+		return false
+	}
+
+	return true
 }
