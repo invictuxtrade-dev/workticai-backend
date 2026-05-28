@@ -487,26 +487,43 @@ func (m *BotManager) StartBot(id string) error {
 								_ = m.Agenda.CompletePending(pending.ID)
 
 								if strings.TrimSpace(settings.NotifyWhatsapp) != "" {
+
 								notifyMsg := fmt.Sprintf(
-								"📅 Nueva cita agendada por Agenda AI\n\nLead: %s\nTeléfono: %s\nFecha: %s\nHora: %s\nBot: %s",
-								lead.DisplayName,
-								lead.Phone,
-								startAt.Format("02/01/2006"),
-								startAt.Format("15:04"),
-								bot.Name,
-							)
+									"📅 Nueva cita agendada por Agenda AI\n\nLead: %s\nTeléfono: %s\nFecha: %s\nHora: %s\nBot: %s",
+									lead.DisplayName,
+									lead.Phone,
+									startAt.Format("02/01/2006"),
+									startAt.Format("15:04"),
+									bot.Name,
+								)
 
-	cleanNotifyPhone := strings.TrimSpace(settings.NotifyWhatsapp)
-cleanNotifyPhone = strings.TrimPrefix(cleanNotifyPhone, "+")
-cleanNotifyPhone = strings.ReplaceAll(cleanNotifyPhone, " ", "")
-cleanNotifyPhone = strings.ReplaceAll(cleanNotifyPhone, "-", "")
-cleanNotifyPhone = strings.ReplaceAll(cleanNotifyPhone, "(", "")
-cleanNotifyPhone = strings.ReplaceAll(cleanNotifyPhone, ")", "")
+								cleanNotifyPhone := strings.TrimSpace(settings.NotifyWhatsapp)
+								cleanNotifyPhone = strings.TrimPrefix(cleanNotifyPhone, "+")
+								cleanNotifyPhone = strings.ReplaceAll(cleanNotifyPhone, " ", "")
+								cleanNotifyPhone = strings.ReplaceAll(cleanNotifyPhone, "-", "")
+								cleanNotifyPhone = strings.ReplaceAll(cleanNotifyPhone, "(", "")
+								cleanNotifyPhone = strings.ReplaceAll(cleanNotifyPhone, ")", "")
 
-logger.Infof("sending appointment notification bot=%s to=%s raw=%s", id, cleanNotifyPhone, settings.NotifyWhatsapp)
+								logger.Infof(
+									"sending appointment notification bot=%s to=%s raw=%s",
+									id,
+									cleanNotifyPhone,
+									settings.NotifyWhatsapp,
+								)
 
-if err := m.SendText(id, cleanNotifyPhone, notifyMsg); err != nil {
-						}
+								if err := m.SendText(id, cleanNotifyPhone, notifyMsg); err != nil {
+									logger.Errorf(
+										"error sending appointment notification to %s: %v",
+										cleanNotifyPhone,
+										err,
+									)
+								} else {
+									logger.Infof(
+										"appointment notification sent to %s",
+										cleanNotifyPhone,
+									)
+								}
+							}
 
 								reply := fmt.Sprintf(
 									"✅ Perfecto %s.\n\nTu cita quedó agendada para:\n%s",
@@ -1242,10 +1259,10 @@ func (m *BotManager) HandleAgendaIntent(bot models.Bot, lead models.Lead, incomi
 			ap.StartAt.Format("15:04"),
 			bot.Name,
 		)
-		_ = notifyMsg // Si quieres usar este mensaje, necesitas agregar la lógica para enviarlo
+
 	}
 
-	return reply, true
+	return reply, true 
 }
 
 func inferBusinessType(cfg models.BotConfig) string {
