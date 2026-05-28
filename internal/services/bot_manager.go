@@ -496,10 +496,19 @@ func (m *BotManager) StartBot(id string) error {
 								bot.Name,
 							)
 
-							if err := m.SendText(id, settings.NotifyWhatsapp, notifyMsg); err != nil {
-	logger.Errorf("error sending appointment notification to %s: %v", settings.NotifyWhatsapp, err)
+	cleanNotifyPhone := strings.TrimSpace(settings.NotifyWhatsapp)
+cleanNotifyPhone = strings.TrimPrefix(cleanNotifyPhone, "+")
+cleanNotifyPhone = strings.ReplaceAll(cleanNotifyPhone, " ", "")
+cleanNotifyPhone = strings.ReplaceAll(cleanNotifyPhone, "-", "")
+cleanNotifyPhone = strings.ReplaceAll(cleanNotifyPhone, "(", "")
+cleanNotifyPhone = strings.ReplaceAll(cleanNotifyPhone, ")", "")
+
+logger.Infof("sending appointment notification bot=%s to=%s raw=%s", id, cleanNotifyPhone, settings.NotifyWhatsapp)
+
+if err := m.SendText(id, cleanNotifyPhone, notifyMsg); err != nil {
+	logger.Errorf("error sending appointment notification to %s: %v", cleanNotifyPhone, err)
 } else {
-	logger.Infof("appointment notification sent to %s", settings.NotifyWhatsapp)
+	logger.Infof("appointment notification sent to %s", cleanNotifyPhone)
 }
 						}
 
