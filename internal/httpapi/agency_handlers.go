@@ -69,12 +69,6 @@ func (s *Server) handleCreateAgency(w http.ResponseWriter, r *http.Request) {
 		adminPassword = "Agency-" + uuid.NewString()[:8]
 	}
 
-	now := item.CreatedAt
-	if now.IsZero() {
-		// fallback por si la fecha viene vacía
-		now = item.UpdatedAt
-	}
-
 	clientID := uuid.NewString()
 
 	_, err = s.DB.Exec(`
