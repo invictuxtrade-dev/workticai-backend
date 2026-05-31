@@ -381,6 +381,31 @@ func (s *AgencyService) AgencyPrice(agencyID, planSlug, billingCycle string) (fl
 	return price, true
 }
 
+func (s *AgencyService) GetBySubdomain(slug string) (Agency, error) {
+	var a Agency
+
+	slug = strings.TrimSpace(slug)
+
+	err := s.DB.QueryRow(`
+		SELECT id, name, email, phone, status, logo_url, brand_color, brand_name,
+		       custom_domain, subdomain, contract_title, contract_body, contract_status,
+		       contract_signed_by, contract_signed_email, contract_signature, contract_signed_ip,
+		       contract_signed_at, notes, monthly_fee, plan_equivalent, starts_at, expires_at,
+		       created_at, updated_at
+		FROM agencies
+		WHERE lower(subdomain)=lower(?)
+		LIMIT 1
+	`, slug).Scan(
+		&a.ID, &a.Name, &a.Email, &a.Phone, &a.Status, &a.LogoURL, &a.BrandColor, &a.BrandName,
+		&a.CustomDomain, &a.Subdomain, &a.ContractTitle, &a.ContractBody, &a.ContractStatus,
+		&a.ContractSignedBy, &a.ContractSignedEmail, &a.ContractSignature, &a.ContractSignedIP,
+		&a.ContractSignedAt, &a.Notes, &a.MonthlyFee, &a.PlanEquivalent, &a.StartsAt, &a.ExpiresAt,
+		&a.CreatedAt, &a.UpdatedAt,
+	)
+
+	return a, err
+}
+
 func DefaultAgencyContract(agencyName string) string {
 	return `CONTRATO COMERCIAL DE AGENCIA WORKTIC AI
 

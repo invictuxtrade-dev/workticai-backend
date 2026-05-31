@@ -198,3 +198,17 @@ func (s *Server) handleMyAgencyBranding(w http.ResponseWriter, r *http.Request) 
 		"agency":     item,
 	})
 }
+
+func (s *Server) handlePublicAgencyBySlug(w http.ResponseWriter, r *http.Request) {
+	slug := mux.Vars(r)["slug"]
+
+	item, err := s.Agencies.GetBySubdomain(slug)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{
+			"error": "agency not found",
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, item)
+}

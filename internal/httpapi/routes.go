@@ -39,6 +39,7 @@ func (s *Server) routes() {
  
 	r.HandleFunc("/api/public/agencies/{id}/contract", s.handlePublicAgencyContract).Methods("GET", "OPTIONS")
     r.HandleFunc("/api/public/agencies/{id}/contract/sign", s.handleSignAgencyContract).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/public/agencies/by-slug/{slug}", s.handlePublicAgencyBySlug).Methods("GET", "OPTIONS")
 
 
 	// Assets públicos de Social IA
