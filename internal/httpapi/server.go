@@ -44,7 +44,7 @@ func New(
 	assistant *services.AssistantService,
 	video *services.VideoService,
 	agenda *services.AgendaService,
-	PaymentLinks *services.PaymentLinkService
+	PaymentLinks *services.PaymentLinkService,
 ) *Server {
 	s := &Server{
 		DB:        db,
