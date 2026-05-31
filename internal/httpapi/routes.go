@@ -34,6 +34,9 @@ func (s *Server) routes() {
 	// Público para visualizar landings compartibles
 	r.HandleFunc("/l/{id}", s.handlePublicLanding).Methods("GET", "OPTIONS")
 
+	r.HandleFunc("/api/public/payment-links/{id}", s.handlePublicPaymentLink).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/public/payment-links/{id}/submit", s.handleSubmitPaymentLinkTx).Methods("POST", "OPTIONS")
+
 	// Assets públicos de Social IA
 	r.PathPrefix("/social-assets/").Handler(
 		http.StripPrefix(
@@ -135,6 +138,11 @@ func (s *Server) routes() {
 	secured.HandleFunc("/subscriptions/pay", s.handleSubmitTxHash).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/subscriptions/pending", requireRole("admin")(s.handlePendingSubscriptions)).Methods("GET", "OPTIONS")
 	secured.HandleFunc("/subscriptions/{id}/approve", requireRole("admin")(s.handleApproveSubscription)).Methods("POST", "OPTIONS")
+    secured.HandleFunc("/payment-links", s.handleListPaymentLinks).Methods("GET", "OPTIONS")
+	secured.HandleFunc("/payment-links", requireRole("admin")(s.handleCreatePaymentLink)).Methods("POST", "OPTIONS")
+	secured.HandleFunc("/payment-links/{id}/approve", requireRole("admin")(s.handleApprovePaymentLink)).Methods("POST", "OPTIONS")
+	secured.HandleFunc("/payment-links/{id}/reject", requireRole("admin")(s.handleRejectPaymentLink)).Methods("POST", "OPTIONS")
+
 
 	secured.HandleFunc("/ads/campaigns", s.handleListAdsCampaigns).Methods("GET", "OPTIONS")
 	secured.HandleFunc("/ads/generate-campaign", s.handleGenerateAdsCampaign).Methods("POST", "OPTIONS")
@@ -3592,4 +3600,140 @@ func (s *Server) handleCheckAgendaAvailability(w http.ResponseWriter, r *http.Re
 		"available": ok,
 		"reason":    reason,
 	})
+}
+
+func (s *Server) handleListPaymentLinks(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+
+	clientID := r.URL.Query().Get("client_id")
+	if u.Role != "admin" {
+		clientID = u.ClientID
+	}
+
+	items, err := s.PaymentLinks.List(clientID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	publicBaseURL := strings.TrimRight(os.Getenv("PUBLIC_APP_URL"), "/")
+	if publicBaseURL == "" {
+		publicBaseURL = strings.TrimRight(os.Getenv("PUBLIC_BASE_URL"), "/")
+	}
+
+	for i := range items {
+		if publicBaseURL != "" {
+			items[i].PublicURL = publicBaseURL + "/pay/" + items[i].ID
+		}
+	}
+
+	writeJSON(w, http.StatusOK, items)
+}
+
+func (s *Server) handleCreatePaymentLink(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+
+	var body services.PaymentLink
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+
+	if u.Role != "admin" {
+		body.ClientID = u.ClientID
+	}
+	body.CreatedBy = u.ID
+
+	publicBaseURL := strings.TrimRight(os.Getenv("PUBLIC_APP_URL"), "/")
+	if publicBaseURL == "" {
+		publicBaseURL = strings.TrimRight(os.Getenv("PUBLIC_BASE_URL"), "/")
+	}
+
+	item, err := s.PaymentLinks.Create(body, publicBaseURL)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, item)
+}
+
+func (s *Server) handlePublicPaymentLink(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+
+	item, err := s.PaymentLinks.Get(id)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "payment link not found"})
+		return
+	}
+
+	if item.Status == "approved" {
+		writeJSON(w, http.StatusOK, item)
+		return
+	}
+
+	if item.ExpiresAt != nil && time.Now().After(*item.ExpiresAt) {
+		item.Status = "expired"
+	}
+
+	writeJSON(w, http.StatusOK, item)
+}
+
+func (s *Server) handleSubmitPaymentLinkTx(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+
+	var body struct {
+		CustomerName  string `json:"customer_name"`
+		CustomerEmail string `json:"customer_email"`
+		CustomerPhone string `json:"customer_phone"`
+		TxHash        string `json:"tx_hash"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
+
+	if err := s.PaymentLinks.SubmitTx(
+		id,
+		body.CustomerName,
+		body.CustomerEmail,
+		body.CustomerPhone,
+		body.TxHash,
+	); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+
+	item, _ := s.PaymentLinks.Get(id)
+	writeJSON(w, http.StatusOK, item)
+}
+
+func (s *Server) handleApprovePaymentLink(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+	id := mux.Vars(r)["id"]
+
+	if err := s.PaymentLinks.Approve(id, u.ID); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"success": true})
+}
+
+func (s *Server) handleRejectPaymentLink(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+
+	var body struct {
+		Reason string `json:"reason"`
+	}
+
+	_ = json.NewDecoder(r.Body).Decode(&body)
+
+	if err := s.PaymentLinks.Reject(id, body.Reason); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"success": true})
 }

@@ -601,6 +601,7 @@ func migrate(db *sql.DB) error {
 		created_at TIMESTAMP NOT NULL,
 		updated_at TIMESTAMP NOT NULL
 	);`,
+	
 
 	`CREATE TABLE IF NOT EXISTS appointment_notifications (
 		id TEXT PRIMARY KEY,
@@ -612,6 +613,30 @@ func migrate(db *sql.DB) error {
 		error TEXT DEFAULT '',
 		created_at TIMESTAMP NOT NULL,
 		sent_at TIMESTAMP NULL
+	);`,
+
+		`CREATE TABLE IF NOT EXISTS payment_links (
+		id TEXT PRIMARY KEY,
+		client_id TEXT NOT NULL DEFAULT '',
+		created_by TEXT NOT NULL DEFAULT '',
+		concept TEXT NOT NULL DEFAULT '',
+		description TEXT NOT NULL DEFAULT '',
+		amount REAL NOT NULL DEFAULT 0,
+		currency TEXT NOT NULL DEFAULT 'USDT',
+		payment_method TEXT NOT NULL DEFAULT 'usdt_bep20',
+		wallet_address TEXT NOT NULL DEFAULT '',
+		customer_name TEXT NOT NULL DEFAULT '',
+		customer_email TEXT NOT NULL DEFAULT '',
+		customer_phone TEXT NOT NULL DEFAULT '',
+		tx_hash TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'created',
+		expires_at TIMESTAMP NULL,
+		paid_at TIMESTAMP NULL,
+		approved_at TIMESTAMP NULL,
+		approved_by TEXT NOT NULL DEFAULT '',
+		rejection_reason TEXT NOT NULL DEFAULT '',
+		created_at TIMESTAMP NOT NULL,
+		updated_at TIMESTAMP NOT NULL
 	);`,
 
 		`CREATE INDEX IF NOT EXISTS idx_assistant_messages_client_id ON assistant_messages(client_id);`,
