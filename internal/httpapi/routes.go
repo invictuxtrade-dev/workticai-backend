@@ -36,6 +36,10 @@ func (s *Server) routes() {
 
 	r.HandleFunc("/api/public/payment-links/{id}", s.handlePublicPaymentLink).Methods("GET", "OPTIONS")
 	r.HandleFunc("/api/public/payment-links/{id}/submit", s.handleSubmitPaymentLinkTx).Methods("POST", "OPTIONS")
+ 
+	r.HandleFunc("/api/public/agencies/{id}/contract", s.handlePublicAgencyContract).Methods("GET", "OPTIONS")
+    r.HandleFunc("/api/public/agencies/{id}/contract/sign", s.handleSignAgencyContract).Methods("POST", "OPTIONS")
+
 
 	// Assets públicos de Social IA
 	r.PathPrefix("/social-assets/").Handler(
@@ -188,6 +192,16 @@ func (s *Server) routes() {
 	secured.HandleFunc("/agenda/agents", s.handleListAppointmentAgents).Methods("GET", "OPTIONS")
 	secured.HandleFunc("/agenda/agents", s.handleSaveAppointmentAgent).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/agenda/agents/{id}", s.handleDeleteAppointmentAgent).Methods("DELETE", "OPTIONS")
+
+	secured.HandleFunc("/agencies", requireRole("admin")(s.handleListAgencies)).Methods("GET", "OPTIONS")
+	secured.HandleFunc("/agencies", requireRole("admin")(s.handleCreateAgency)).Methods("POST", "OPTIONS")
+	secured.HandleFunc("/agencies/{id}", requireRole("admin")(s.handleGetAgency)).Methods("GET", "OPTIONS")
+	secured.HandleFunc("/agencies/{id}", requireRole("admin")(s.handleUpdateAgency)).Methods("PUT", "OPTIONS")
+	secured.HandleFunc("/agencies/{id}", requireRole("admin")(s.handleDeleteAgency)).Methods("DELETE", "OPTIONS")
+	secured.HandleFunc("/agencies/{id}/activate", requireRole("admin")(s.handleActivateAgency)).Methods("POST", "OPTIONS")
+	secured.HandleFunc("/agencies/{id}/suspend", requireRole("admin")(s.handleSuspendAgency)).Methods("POST", "OPTIONS")
+	secured.HandleFunc("/agencies/{id}/prices", requireRole("admin")(s.handleAgencyPrices)).Methods("GET", "OPTIONS")
+	secured.HandleFunc("/agencies/{id}/prices", requireRole("admin")(s.handleSaveAgencyPrices)).Methods("POST", "OPTIONS")
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {

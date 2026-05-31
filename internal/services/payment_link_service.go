@@ -24,6 +24,8 @@ type PaymentLink struct {
 	CustomerPhone   string     `json:"customer_phone"`
 	TxHash          string     `json:"tx_hash"`
 	Status          string     `json:"status"`
+	AgencyID     	string 	   `json:"agency_id"`
+	PaymentScope 	string 	   `json:"payment_scope"`
 	ExpiresAt       *time.Time `json:"expires_at"`
 	PaidAt          *time.Time `json:"paid_at"`
 	ApprovedAt      *time.Time `json:"approved_at"`
@@ -81,6 +83,10 @@ func (s *PaymentLinkService) Create(x PaymentLink, publicBaseURL string) (Paymen
 		return PaymentLink{}, errors.New("USDT BEP20 wallet is not configured")
 	}
 
+	if x.PaymentScope == "" {
+	x.PaymentScope = "client"
+	}
+
 	x.CreatedAt = now
 	x.UpdatedAt = now
 
@@ -88,9 +94,9 @@ func (s *PaymentLinkService) Create(x PaymentLink, publicBaseURL string) (Paymen
 		INSERT INTO payment_links (
 			id, client_id, created_by, concept, description, amount, currency,
 			payment_method, wallet_address, customer_name, customer_email,
-			customer_phone, tx_hash, status, expires_at, paid_at, approved_at,
+			customer_phone, tx_hash, status, agency_id, payment_scope, expires_at, paid_at, approved_at,
 			approved_by, rejection_reason, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		x.ID,
 		x.ClientID,
@@ -106,6 +112,8 @@ func (s *PaymentLinkService) Create(x PaymentLink, publicBaseURL string) (Paymen
 		x.CustomerPhone,
 		x.TxHash,
 		x.Status,
+		x.AgencyID,
+		x.PaymentScope,
 		x.ExpiresAt,
 		x.PaidAt,
 		x.ApprovedAt,

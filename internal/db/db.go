@@ -94,6 +94,11 @@ func Open(path string) (*sql.DB, error) {
 	`ALTER TABLE social_credentials ADD COLUMN tiktok_access_token TEXT DEFAULT ''`,
 	`ALTER TABLE social_credentials ADD COLUMN tiktok_open_id TEXT DEFAULT ''`,
 	`ALTER TABLE social_credentials ADD COLUMN tiktok_connected INTEGER DEFAULT 0`,
+
+	`ALTER TABLE clients ADD COLUMN agency_id TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE users ADD COLUMN agency_id TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE payment_links ADD COLUMN agency_id TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE payment_links ADD COLUMN payment_scope TEXT NOT NULL DEFAULT 'client'`,
 	
 }
 
@@ -635,6 +640,46 @@ func migrate(db *sql.DB) error {
 		approved_at TIMESTAMP NULL,
 		approved_by TEXT NOT NULL DEFAULT '',
 		rejection_reason TEXT NOT NULL DEFAULT '',
+		created_at TIMESTAMP NOT NULL,
+		updated_at TIMESTAMP NOT NULL
+	);`,
+
+		`CREATE TABLE IF NOT EXISTS agencies (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		email TEXT NOT NULL DEFAULT '',
+		phone TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'pending',
+		logo_url TEXT NOT NULL DEFAULT '',
+		brand_color TEXT NOT NULL DEFAULT '#7430e2',
+		brand_name TEXT NOT NULL DEFAULT '',
+		custom_domain TEXT NOT NULL DEFAULT '',
+		subdomain TEXT NOT NULL DEFAULT '',
+		contract_title TEXT NOT NULL DEFAULT '',
+		contract_body TEXT NOT NULL DEFAULT '',
+		contract_status TEXT NOT NULL DEFAULT 'draft',
+		contract_signed_by TEXT NOT NULL DEFAULT '',
+		contract_signed_email TEXT NOT NULL DEFAULT '',
+		contract_signature TEXT NOT NULL DEFAULT '',
+		contract_signed_ip TEXT NOT NULL DEFAULT '',
+		contract_signed_at TIMESTAMP NULL,
+		notes TEXT NOT NULL DEFAULT '',
+		monthly_fee REAL NOT NULL DEFAULT 0,
+		plan_equivalent TEXT NOT NULL DEFAULT 'business',
+		starts_at TIMESTAMP NULL,
+		expires_at TIMESTAMP NULL,
+		created_at TIMESTAMP NOT NULL,
+		updated_at TIMESTAMP NOT NULL
+	);`,
+
+	`CREATE TABLE IF NOT EXISTS agency_plan_prices (
+		id TEXT PRIMARY KEY,
+		agency_id TEXT NOT NULL,
+		plan_slug TEXT NOT NULL,
+		normal_price REAL NOT NULL DEFAULT 0,
+		agency_price REAL NOT NULL DEFAULT 0,
+		billing_cycle TEXT NOT NULL DEFAULT 'monthly',
+		enabled INTEGER NOT NULL DEFAULT 1,
 		created_at TIMESTAMP NOT NULL,
 		updated_at TIMESTAMP NOT NULL
 	);`,
