@@ -3732,6 +3732,17 @@ func (s *Server) handleApprovePaymentLink(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	link, err := s.PaymentLinks.Get(id)
+
+	if err == nil &&
+	link.PaymentScope == "agency_license" &&
+	strings.TrimSpace(link.AgencyID) != "" {
+
+		if s.Agencies != nil {
+			_ = s.Agencies.Activate(link.AgencyID, 1)
+		}
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{"success": true})
 }
 
