@@ -37,6 +37,47 @@ func (a *AuthService) CreateUser(clientID, name, email, password, role string) (
 	token, err := a.createSession(id); return user, token, err
 }
 
+func (a *AuthService) CreateUserWithAgency(clientID, agencyID, name, email, password, role string) (models.User, string, error) {
+	if role == "" {
+		role = "client_admin"
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return models.User{}, "", err
+	}
+
+	id := uuid.NewString()
+	now := time.Now()
+
+	_, err = a.DB.Exec(`
+		INSERT INTO users (
+			id, client_id, agency_id, name, email, password_hash, role, status, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)
+	`,
+		id,
+		clientID,
+		agencyID,
+		name,
+		email,
+		string(hash),
+		role,
+		now,
+	)
+
+	if err != nil {
+		return models.User{}, "", err
+	}
+
+	user, err := a.GetUser(id)
+	if err != nil {
+		return models.User{}, "", err
+	}
+
+	token, err := a.createSession(id)
+	return user, token, err
+}
+
 func (a *AuthService) Login(email, password string) (models.User, string, error) {
 	var id, clientID, agencyID, name, hash, role, plan, status string
 	var created time.Time
@@ -199,3 +240,39 @@ func (a *AuthService) UpdateUser(id, clientID, name, email, role, status, passwo
 }
 
 func (a *AuthService) DeleteUser(id string) error { _, err := a.DB.Exec(`DELETE FROM users WHERE id=?`, id); return err }
+
+func (a *AuthService) ResetAgencyAdminPassword(agencyID, email, newPassword string) (models.User, error) {
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return models.User{}, err
+	}
+
+	_, err = a.DB.Exec(`
+		UPDATE users
+		SET password_hash=?,
+		    status='active'
+		WHERE agency_id=? AND email=? AND role='agency_admin'
+	`,
+		string(hash),
+		agencyID,
+		email,
+	)
+
+	if err != nil {
+		return models.User{}, err
+	}
+
+	var userID string
+	err = a.DB.QueryRow(`
+		SELECT id
+		FROM users
+		WHERE agency_id=? AND email=? AND role='agency_admin'
+		LIMIT 1
+	`, agencyID, email).Scan(&userID)
+
+	if err != nil {
+		return models.User{}, err
+	}
+
+	return a.GetUser(userID)
+}

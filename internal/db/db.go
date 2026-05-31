@@ -104,6 +104,10 @@ func Open(path string) (*sql.DB, error) {
 	`ALTER TABLE agencies ADD COLUMN favicon_url TEXT DEFAULT ''`,
 	`ALTER TABLE agencies ADD COLUMN login_title TEXT DEFAULT ''`,
 	`ALTER TABLE agencies ADD COLUMN login_subtitle TEXT DEFAULT ''`,
+	`ALTER TABLE agencies ADD COLUMN admin_name TEXT DEFAULT ''`,
+	`ALTER TABLE agencies ADD COLUMN admin_email TEXT DEFAULT ''`,
+	`ALTER TABLE agencies ADD COLUMN last_temp_password TEXT DEFAULT ''`,
+	`ALTER TABLE agencies ADD COLUMN last_password_reset TIMESTAMP NULL`,
 	
 }
 

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"whatsapp-sales-os-enterprise/backend/internal/services"
 )
@@ -20,19 +21,119 @@ func (s *Server) handleListAgencies(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateAgency(w http.ResponseWriter, r *http.Request) {
-	var a services.Agency
-	if err := json.NewDecoder(r.Body).Decode(&a); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+	var body struct {
+		services.Agency
+
+		AdminName     string `json:"admin_name"`
+		AdminEmail    string `json:"admin_email"`
+		AdminPassword string `json:"admin_password"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": "invalid json",
+		})
 		return
 	}
 
-	item, err := s.Agencies.Create(a)
+	agencyInput := body.Agency
+
+	item, err := s.Agencies.Create(agencyInput)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": err.Error(),
+		})
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, item)
+	adminEmail := strings.TrimSpace(body.AdminEmail)
+	if adminEmail == "" {
+		adminEmail = strings.TrimSpace(item.Email)
+	}
+
+	if adminEmail == "" {
+		writeJSON(w, http.StatusCreated, map[string]any{
+			"agency": item,
+			"warning": "Agencia creada, pero no se creó usuario agency_admin porque falta email.",
+		})
+		return
+	}
+
+	adminName := strings.TrimSpace(body.AdminName)
+	if adminName == "" {
+		adminName = item.Name + " Admin"
+	}
+
+	adminPassword := strings.TrimSpace(body.AdminPassword)
+	if adminPassword == "" {
+		adminPassword = "Agency-" + uuid.NewString()[:8]
+	}
+
+	now := item.CreatedAt
+	if now.IsZero() {
+		// fallback por si la fecha viene vacía
+		now = item.UpdatedAt
+	}
+
+	clientID := uuid.NewString()
+
+	_, err = s.DB.Exec(`
+		INSERT INTO clients (
+			id, agency_id, name, email, phone, plan, status, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+	`,
+		clientID,
+		item.ID,
+		item.Name,
+		item.Email,
+		item.Phone,
+		item.PlanEquivalent,
+		"active",
+	)
+
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"error": "agency created but primary client failed: " + err.Error(),
+		})
+		return
+	}
+
+	adminUser, _, err := s.Auth.CreateUserWithAgency(
+		clientID,
+		item.ID,
+		adminName,
+		adminEmail,
+		adminPassword,
+		"agency_admin",
+	)
+
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"error": "agency and primary client created but agency admin failed: " + err.Error(),
+		})
+		return
+	}
+
+	loginURL := "/a/" + strings.TrimSpace(item.Subdomain)
+	if strings.TrimSpace(item.Subdomain) == "" {
+		loginURL = "/"
+	}
+
+	_ = s.Agencies.SaveAccessData(
+	item.ID,
+	adminName,
+	adminEmail,
+	adminPassword,
+		)
+
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"agency": item,
+		"primary_client_id": clientID,
+		"agency_admin": adminUser,
+		"temporary_password": adminPassword,
+		"login_url": loginURL,
+		"contract_url": "/agency-contract/" + item.ID,
+	})
 }
 
 func (s *Server) handleUpdateAgency(w http.ResponseWriter, r *http.Request) {
@@ -211,4 +312,96 @@ func (s *Server) handlePublicAgencyBySlug(w http.ResponseWriter, r *http.Request
 	}
 
 	writeJSON(w, http.StatusOK, item)
+}
+
+func (s *Server) handleAgencyAccess(w http.ResponseWriter, r *http.Request) {
+	agencyID := mux.Vars(r)["id"]
+
+	item, err := s.Agencies.Get(agencyID)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{
+			"error": "agency not found",
+		})
+		return
+	}
+
+	loginURL := "/"
+	if strings.TrimSpace(item.Subdomain) != "" {
+		loginURL = "/a/" + strings.TrimSpace(item.Subdomain)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"agency_id": item.ID,
+		"agency_name": item.Name,
+		"admin_name": item.AdminName,
+		"admin_email": item.AdminEmail,
+		"temporary_password": item.LastTempPassword,
+		"login_url": loginURL,
+		"contract_url": "/agency-contract/" + item.ID,
+		"last_password_reset": item.LastPasswordReset,
+	})
+}
+
+func (s *Server) handleRegenerateAgencyAccess(w http.ResponseWriter, r *http.Request) {
+	agencyID := mux.Vars(r)["id"]
+
+	item, err := s.Agencies.Get(agencyID)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{
+			"error": "agency not found",
+		})
+		return
+	}
+
+	adminEmail := strings.TrimSpace(item.AdminEmail)
+	if adminEmail == "" {
+		adminEmail = strings.TrimSpace(item.Email)
+	}
+
+	if adminEmail == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": "agency admin email not configured",
+		})
+		return
+	}
+
+	adminName := strings.TrimSpace(item.AdminName)
+	if adminName == "" {
+		adminName = item.Name + " Admin"
+	}
+
+	newPassword := "Agency-" + uuid.NewString()[:8]
+
+	adminUser, err := s.Auth.ResetAgencyAdminPassword(
+		item.ID,
+		adminEmail,
+		newPassword,
+	)
+
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"error": "could not reset agency admin password: " + err.Error(),
+		})
+		return
+	}
+
+	_ = s.Agencies.SaveAccessData(
+		item.ID,
+		adminName,
+		adminEmail,
+		newPassword,
+	)
+
+	loginURL := "/"
+	if strings.TrimSpace(item.Subdomain) != "" {
+		loginURL = "/a/" + strings.TrimSpace(item.Subdomain)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"agency": item,
+		"agency_admin": adminUser,
+		"temporary_password": newPassword,
+		"login_url": loginURL,
+		"contract_url": "/agency-contract/" + item.ID,
+	})
 }

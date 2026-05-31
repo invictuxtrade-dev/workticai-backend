@@ -65,15 +65,15 @@ func (s *Server) routes() {
 
 	secured.HandleFunc("/dashboard/metrics", s.handleMetrics).Methods("GET", "OPTIONS")
 
-	secured.HandleFunc("/clients", requireRole("admin")(s.handleListClients)).Methods("GET", "OPTIONS")
-	secured.HandleFunc("/clients", requireRole("admin")(s.handleCreateClient)).Methods("POST", "OPTIONS")
-	secured.HandleFunc("/clients/{id}", requireRole("admin")(s.handleUpdateClient)).Methods("PUT", "OPTIONS")
-	secured.HandleFunc("/clients/{id}", requireRole("admin")(s.handleDeleteClient)).Methods("DELETE", "OPTIONS")
+	secured.HandleFunc("/clients", requireRole("admin", "agency_admin")(s.handleListClients)).Methods("GET", "OPTIONS")
+	secured.HandleFunc("/clients", requireRole("admin", "agency_admin")(s.handleCreateClient)).Methods("POST", "OPTIONS")
+	secured.HandleFunc("/clients/{id}", requireRole("admin", "agency_admin")(s.handleUpdateClient)).Methods("PUT", "OPTIONS")
+	secured.HandleFunc("/clients/{id}", requireRole("admin", "agency_admin")(s.handleDeleteClient)).Methods("DELETE", "OPTIONS")
 
-	secured.HandleFunc("/users", requireRole("admin")(s.handleListUsers)).Methods("GET", "OPTIONS")
-	secured.HandleFunc("/users", requireRole("admin")(s.handleCreateUser)).Methods("POST", "OPTIONS")
-	secured.HandleFunc("/users/{id}", requireRole("admin")(s.handleUpdateUser)).Methods("PUT", "OPTIONS")
-	secured.HandleFunc("/users/{id}", requireRole("admin")(s.handleDeleteUser)).Methods("DELETE", "OPTIONS")
+	secured.HandleFunc("/users", requireRole("admin", "agency_admin")(s.handleListUsers)).Methods("GET", "OPTIONS")
+	secured.HandleFunc("/users", requireRole("admin", "agency_admin")(s.handleCreateUser)).Methods("POST", "OPTIONS")
+	secured.HandleFunc("/users/{id}", requireRole("admin", "agency_admin")(s.handleUpdateUser)).Methods("PUT", "OPTIONS")
+	secured.HandleFunc("/users/{id}", requireRole("admin", "agency_admin")(s.handleDeleteUser)).Methods("DELETE", "OPTIONS")
 
 	secured.HandleFunc("/templates", s.handleListTemplates).Methods("GET", "OPTIONS")
 	secured.HandleFunc("/templates", s.handleCreateTemplate).Methods("POST", "OPTIONS")
@@ -205,6 +205,8 @@ func (s *Server) routes() {
 	secured.HandleFunc("/agencies/{id}/prices", requireRole("admin")(s.handleSaveAgencyPrices)).Methods("POST", "OPTIONS")
 
 	secured.HandleFunc("/agency-branding", s.handleMyAgencyBranding).Methods("GET", "OPTIONS")
+	secured.HandleFunc("/agencies/{id}/access", requireRole("admin")(s.handleAgencyAccess)).Methods("GET", "OPTIONS")
+	secured.HandleFunc("/agencies/{id}/regenerate-access", requireRole("admin")(s.handleRegenerateAgencyAccess)).Methods("POST", "OPTIONS")
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {

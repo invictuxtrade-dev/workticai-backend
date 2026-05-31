@@ -22,6 +22,10 @@ type Agency struct {
 	FaviconURL          string     `json:"favicon_url"`
 	LoginTitle          string     `json:"login_title"`
 	LoginSubtitle       string     `json:"login_subtitle"`
+	AdminName         string     `json:"admin_name"`
+	AdminEmail        string     `json:"admin_email"`
+	LastTempPassword  string     `json:"last_temp_password"`
+	LastPasswordReset *time.Time `json:"last_password_reset"`
 	BrandName           string     `json:"brand_name"`
 	CustomDomain        string     `json:"custom_domain"`
 	Subdomain           string     `json:"subdomain"`
@@ -73,6 +77,9 @@ func normalizeAgency(a Agency) Agency {
 	a.FaviconURL = strings.TrimSpace(a.FaviconURL)
 	a.LoginTitle = strings.TrimSpace(a.LoginTitle)
 	a.LoginSubtitle = strings.TrimSpace(a.LoginSubtitle)
+	a.AdminName = strings.TrimSpace(a.AdminName)
+	a.AdminEmail = strings.TrimSpace(a.AdminEmail)
+	a.LastTempPassword = strings.TrimSpace(a.LastTempPassword)
 	a.BrandName = strings.TrimSpace(a.BrandName)
 	a.CustomDomain = strings.TrimSpace(a.CustomDomain)
 	a.Subdomain = strings.TrimSpace(a.Subdomain)
