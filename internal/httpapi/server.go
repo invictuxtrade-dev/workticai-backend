@@ -60,7 +60,7 @@ func New(
 		Assistant: assistant,
 		Video: 	   video,
 		Agenda:    agenda,
-		PaymentLinks: paymentLinks,
+		PaymentLinks: PaymentLinks,
 	}
 	s.routes()
 	return s
