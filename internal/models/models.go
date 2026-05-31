@@ -5,10 +5,11 @@ import "time"
 type User struct {
 	ID        string    `json:"id"`
 	ClientID  string    `json:"client_id,omitempty"`
+	AgencyID string    `json:"agency_id,omitempty"`
 	Name      string    `json:"name"`
 	Email     string    `json:"email"`
 	Role      string    `json:"role"`
-	Plan 	  string `json:"plan"`
+	Plan      string    `json:"plan"`
 	Status    string    `json:"status"`
 	CreatedAt time.Time `json:"created_at"`
 }
@@ -21,6 +22,7 @@ type Session struct {
 
 type Client struct {
 	ID        string    `json:"id"`
+	AgencyID string    `json:"agency_id,omitempty"`
 	Name      string    `json:"name"`
 	Email     string    `json:"email,omitempty"`
 	Phone     string    `json:"phone,omitempty"`

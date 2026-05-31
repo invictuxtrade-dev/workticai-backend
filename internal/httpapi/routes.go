@@ -202,6 +202,8 @@ func (s *Server) routes() {
 	secured.HandleFunc("/agencies/{id}/suspend", requireRole("admin")(s.handleSuspendAgency)).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/agencies/{id}/prices", requireRole("admin")(s.handleAgencyPrices)).Methods("GET", "OPTIONS")
 	secured.HandleFunc("/agencies/{id}/prices", requireRole("admin")(s.handleSaveAgencyPrices)).Methods("POST", "OPTIONS")
+
+	secured.HandleFunc("/agency-branding", s.handleMyAgencyBranding).Methods("GET", "OPTIONS")
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {

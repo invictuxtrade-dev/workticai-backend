@@ -174,3 +174,27 @@ func (s *Server) handleSignAgencyContract(w http.ResponseWriter, r *http.Request
 	item, _ := s.Agencies.Get(mux.Vars(r)["id"])
 	writeJSON(w, http.StatusOK, item)
 }
+
+func (s *Server) handleMyAgencyBranding(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
+
+	if strings.TrimSpace(u.AgencyID) == "" {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"has_agency": false,
+		})
+		return
+	}
+
+	item, err := s.Agencies.Get(u.AgencyID)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"has_agency": false,
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"has_agency": true,
+		"agency":     item,
+	})
+}

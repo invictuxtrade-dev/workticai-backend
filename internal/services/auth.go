@@ -38,12 +38,13 @@ func (a *AuthService) CreateUser(clientID, name, email, password, role string) (
 }
 
 func (a *AuthService) Login(email, password string) (models.User, string, error) {
-	var id, clientID, name, hash, role, plan, status string
+	var id, clientID, agencyID, name, hash, role, plan, status string
 	var created time.Time
 	err := a.DB.QueryRow(`
 		SELECT
 			u.id,
 			u.client_id,
+			COALESCE(u.agency_id, c.agency_id, ''),
 			u.name,
 			u.password_hash,
 			u.role,
@@ -56,6 +57,7 @@ func (a *AuthService) Login(email, password string) (models.User, string, error)
 	`, email).Scan(
 		&id,
 		&clientID,
+		&agencyID,
 		&name,
 		&hash,
 		&role,
@@ -68,6 +70,7 @@ func (a *AuthService) Login(email, password string) (models.User, string, error)
 	user := models.User{
 	ID: id,
 	ClientID: clientID,
+	AgencyID: agencyID,
 	Name: name,
 	Email: email,
 	Role: role,
@@ -90,6 +93,7 @@ func (a *AuthService) GetUser(id string) (models.User, error) {
 		SELECT
 			u.id,
 			u.client_id,
+			COALESCE(u.agency_id, c.agency_id, ''),
 			u.name,
 			u.email,
 			u.role,
@@ -102,6 +106,7 @@ func (a *AuthService) GetUser(id string) (models.User, error) {
 	`, id).Scan(
 		&u.ID,
 		&u.ClientID,
+		&u.AgencyID,
 		&u.Name,
 		&u.Email,
 		&u.Role,
@@ -125,6 +130,7 @@ func (a *AuthService) ListUsers(clientID string) ([]models.User, error) {
 	SELECT
 		u.id,
 		u.client_id,
+		COALESCE(u.agency_id, c.agency_id, ''),
 		u.name,
 		u.email,
 		u.role,
@@ -142,6 +148,7 @@ func (a *AuthService) ListUsers(clientID string) ([]models.User, error) {
 	for rows.Next() { var u models.User; if err := rows.Scan(
 	&u.ID,
 	&u.ClientID,
+	&u.AgencyID,
 	&u.Name,
 	&u.Email,
 	&u.Role,
