@@ -99,6 +99,11 @@ func Open(path string) (*sql.DB, error) {
 	`ALTER TABLE users ADD COLUMN agency_id TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE payment_links ADD COLUMN agency_id TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE payment_links ADD COLUMN payment_scope TEXT NOT NULL DEFAULT 'client'`,
+	`ALTER TABLE agencies ADD COLUMN secondary_color TEXT DEFAULT '#0f172a'`,
+	`ALTER TABLE agencies ADD COLUMN login_background TEXT DEFAULT ''`,
+	`ALTER TABLE agencies ADD COLUMN favicon_url TEXT DEFAULT ''`,
+	`ALTER TABLE agencies ADD COLUMN login_title TEXT DEFAULT ''`,
+	`ALTER TABLE agencies ADD COLUMN login_subtitle TEXT DEFAULT ''`,
 	
 }
 

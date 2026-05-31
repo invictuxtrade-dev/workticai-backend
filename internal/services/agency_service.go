@@ -17,6 +17,11 @@ type Agency struct {
 	Status              string     `json:"status"`
 	LogoURL             string     `json:"logo_url"`
 	BrandColor          string     `json:"brand_color"`
+	SecondaryColor      string     `json:"secondary_color"`
+	LoginBackground     string     `json:"login_background"`
+	FaviconURL          string     `json:"favicon_url"`
+	LoginTitle          string     `json:"login_title"`
+	LoginSubtitle       string     `json:"login_subtitle"`
 	BrandName           string     `json:"brand_name"`
 	CustomDomain        string     `json:"custom_domain"`
 	Subdomain           string     `json:"subdomain"`
@@ -57,22 +62,32 @@ func NewAgencyService(db *sql.DB) *AgencyService {
 	return &AgencyService{DB: db}
 }
 
-func (s *AgencyService) Create(a Agency) (Agency, error) {
-	now := time.Now()
-
+func normalizeAgency(a Agency) Agency {
 	a.Name = strings.TrimSpace(a.Name)
-	if a.Name == "" {
-		return Agency{}, errors.New("agency name required")
-	}
+	a.Email = strings.TrimSpace(a.Email)
+	a.Phone = strings.TrimSpace(a.Phone)
+	a.LogoURL = strings.TrimSpace(a.LogoURL)
+	a.BrandColor = strings.TrimSpace(a.BrandColor)
+	a.SecondaryColor = strings.TrimSpace(a.SecondaryColor)
+	a.LoginBackground = strings.TrimSpace(a.LoginBackground)
+	a.FaviconURL = strings.TrimSpace(a.FaviconURL)
+	a.LoginTitle = strings.TrimSpace(a.LoginTitle)
+	a.LoginSubtitle = strings.TrimSpace(a.LoginSubtitle)
+	a.BrandName = strings.TrimSpace(a.BrandName)
+	a.CustomDomain = strings.TrimSpace(a.CustomDomain)
+	a.Subdomain = strings.TrimSpace(a.Subdomain)
+	a.ContractTitle = strings.TrimSpace(a.ContractTitle)
+	a.Notes = strings.TrimSpace(a.Notes)
+	a.PlanEquivalent = strings.TrimSpace(a.PlanEquivalent)
 
-	if a.ID == "" {
-		a.ID = uuid.NewString()
-	}
 	if a.Status == "" {
 		a.Status = "pending"
 	}
 	if a.BrandColor == "" {
 		a.BrandColor = "#7430e2"
+	}
+	if a.SecondaryColor == "" {
+		a.SecondaryColor = "#0f172a"
 	}
 	if a.BrandName == "" {
 		a.BrandName = a.Name
@@ -86,8 +101,30 @@ func (s *AgencyService) Create(a Agency) (Agency, error) {
 	if a.ContractTitle == "" {
 		a.ContractTitle = "Contrato Comercial de Agencia Worktic AI"
 	}
+	if a.LoginTitle == "" {
+		a.LoginTitle = "Bienvenido"
+	}
+	if a.LoginSubtitle == "" {
+		a.LoginSubtitle = "Plataforma de automatización comercial"
+	}
 	if a.ContractBody == "" {
 		a.ContractBody = DefaultAgencyContract(a.Name)
+	}
+
+	return a
+}
+
+func (s *AgencyService) Create(a Agency) (Agency, error) {
+	now := time.Now()
+
+	a = normalizeAgency(a)
+
+	if a.Name == "" {
+		return Agency{}, errors.New("agency name required")
+	}
+
+	if a.ID == "" {
+		a.ID = uuid.NewString()
 	}
 
 	a.CreatedAt = now
@@ -95,15 +132,21 @@ func (s *AgencyService) Create(a Agency) (Agency, error) {
 
 	_, err := s.DB.Exec(`
 		INSERT INTO agencies (
-			id, name, email, phone, status, logo_url, brand_color, brand_name,
-			custom_domain, subdomain, contract_title, contract_body, contract_status,
+			id, name, email, phone, status,
+			logo_url, brand_color, secondary_color, login_background, favicon_url,
+			login_title, login_subtitle, brand_name,
+			custom_domain, subdomain,
+			contract_title, contract_body, contract_status,
 			contract_signed_by, contract_signed_email, contract_signature, contract_signed_ip,
 			contract_signed_at, notes, monthly_fee, plan_equivalent, starts_at, expires_at,
 			created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
-		a.ID, a.Name, a.Email, a.Phone, a.Status, a.LogoURL, a.BrandColor, a.BrandName,
-		a.CustomDomain, a.Subdomain, a.ContractTitle, a.ContractBody, a.ContractStatus,
+		a.ID, a.Name, a.Email, a.Phone, a.Status,
+		a.LogoURL, a.BrandColor, a.SecondaryColor, a.LoginBackground, a.FaviconURL,
+		a.LoginTitle, a.LoginSubtitle, a.BrandName,
+		a.CustomDomain, a.Subdomain,
+		a.ContractTitle, a.ContractBody, a.ContractStatus,
 		a.ContractSignedBy, a.ContractSignedEmail, a.ContractSignature, a.ContractSignedIP,
 		a.ContractSignedAt, a.Notes, a.MonthlyFee, a.PlanEquivalent, a.StartsAt, a.ExpiresAt,
 		a.CreatedAt, a.UpdatedAt,
@@ -112,13 +155,61 @@ func (s *AgencyService) Create(a Agency) (Agency, error) {
 	return a, err
 }
 
+func scanAgency(scanner interface {
+	Scan(dest ...any) error
+}) (Agency, error) {
+	var a Agency
+
+	err := scanner.Scan(
+		&a.ID,
+		&a.Name,
+		&a.Email,
+		&a.Phone,
+		&a.Status,
+		&a.LogoURL,
+		&a.BrandColor,
+		&a.SecondaryColor,
+		&a.LoginBackground,
+		&a.FaviconURL,
+		&a.LoginTitle,
+		&a.LoginSubtitle,
+		&a.BrandName,
+		&a.CustomDomain,
+		&a.Subdomain,
+		&a.ContractTitle,
+		&a.ContractBody,
+		&a.ContractStatus,
+		&a.ContractSignedBy,
+		&a.ContractSignedEmail,
+		&a.ContractSignature,
+		&a.ContractSignedIP,
+		&a.ContractSignedAt,
+		&a.Notes,
+		&a.MonthlyFee,
+		&a.PlanEquivalent,
+		&a.StartsAt,
+		&a.ExpiresAt,
+		&a.CreatedAt,
+		&a.UpdatedAt,
+	)
+
+	return a, err
+}
+
+const agencySelectFields = `
+	id, name, email, phone, status,
+	logo_url, brand_color, secondary_color, login_background, favicon_url,
+	login_title, login_subtitle, brand_name,
+	custom_domain, subdomain,
+	contract_title, contract_body, contract_status,
+	contract_signed_by, contract_signed_email, contract_signature, contract_signed_ip,
+	contract_signed_at, notes, monthly_fee, plan_equivalent, starts_at, expires_at,
+	created_at, updated_at
+`
+
 func (s *AgencyService) List() ([]Agency, error) {
 	rows, err := s.DB.Query(`
-		SELECT id, name, email, phone, status, logo_url, brand_color, brand_name,
-		       custom_domain, subdomain, contract_title, contract_body, contract_status,
-		       contract_signed_by, contract_signed_email, contract_signature, contract_signed_ip,
-		       contract_signed_at, notes, monthly_fee, plan_equivalent, starts_at, expires_at,
-		       created_at, updated_at
+		SELECT ` + agencySelectFields + `
 		FROM agencies
 		ORDER BY created_at DESC
 	`)
@@ -128,59 +219,110 @@ func (s *AgencyService) List() ([]Agency, error) {
 	defer rows.Close()
 
 	out := []Agency{}
+
 	for rows.Next() {
-		var a Agency
-		if err := rows.Scan(
-			&a.ID, &a.Name, &a.Email, &a.Phone, &a.Status, &a.LogoURL, &a.BrandColor, &a.BrandName,
-			&a.CustomDomain, &a.Subdomain, &a.ContractTitle, &a.ContractBody, &a.ContractStatus,
-			&a.ContractSignedBy, &a.ContractSignedEmail, &a.ContractSignature, &a.ContractSignedIP,
-			&a.ContractSignedAt, &a.Notes, &a.MonthlyFee, &a.PlanEquivalent, &a.StartsAt, &a.ExpiresAt,
-			&a.CreatedAt, &a.UpdatedAt,
-		); err != nil {
+		a, err := scanAgency(rows)
+		if err != nil {
 			return nil, err
 		}
+
 		out = append(out, a)
 	}
 
-	return out, nil
+	return out, rows.Err()
 }
 
 func (s *AgencyService) Get(id string) (Agency, error) {
-	var a Agency
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return Agency{}, errors.New("agency id required")
+	}
 
-	err := s.DB.QueryRow(`
-		SELECT id, name, email, phone, status, logo_url, brand_color, brand_name,
-		       custom_domain, subdomain, contract_title, contract_body, contract_status,
-		       contract_signed_by, contract_signed_email, contract_signature, contract_signed_ip,
-		       contract_signed_at, notes, monthly_fee, plan_equivalent, starts_at, expires_at,
-		       created_at, updated_at
+	row := s.DB.QueryRow(`
+		SELECT `+agencySelectFields+`
 		FROM agencies
 		WHERE id=?
 		LIMIT 1
-	`, id).Scan(
-		&a.ID, &a.Name, &a.Email, &a.Phone, &a.Status, &a.LogoURL, &a.BrandColor, &a.BrandName,
-		&a.CustomDomain, &a.Subdomain, &a.ContractTitle, &a.ContractBody, &a.ContractStatus,
-		&a.ContractSignedBy, &a.ContractSignedEmail, &a.ContractSignature, &a.ContractSignedIP,
-		&a.ContractSignedAt, &a.Notes, &a.MonthlyFee, &a.PlanEquivalent, &a.StartsAt, &a.ExpiresAt,
-		&a.CreatedAt, &a.UpdatedAt,
-	)
+	`, id)
 
-	return a, err
+	return scanAgency(row)
+}
+
+func (s *AgencyService) GetBySubdomain(slug string) (Agency, error) {
+	slug = strings.TrimSpace(slug)
+	if slug == "" {
+		return Agency{}, errors.New("subdomain required")
+	}
+
+	row := s.DB.QueryRow(`
+		SELECT `+agencySelectFields+`
+		FROM agencies
+		WHERE lower(subdomain)=lower(?)
+		LIMIT 1
+	`, slug)
+
+	return scanAgency(row)
 }
 
 func (s *AgencyService) Update(a Agency) error {
+	a = normalizeAgency(a)
+
+	if strings.TrimSpace(a.ID) == "" {
+		return errors.New("agency id required")
+	}
+
 	a.UpdatedAt = time.Now()
 
 	_, err := s.DB.Exec(`
 		UPDATE agencies SET
-			name=?, email=?, phone=?, status=?, logo_url=?, brand_color=?, brand_name=?,
-			custom_domain=?, subdomain=?, contract_title=?, contract_body=?, contract_status=?,
-			notes=?, monthly_fee=?, plan_equivalent=?, starts_at=?, expires_at=?, updated_at=?
+			name=?,
+			email=?,
+			phone=?,
+			status=?,
+			logo_url=?,
+			brand_color=?,
+			secondary_color=?,
+			login_background=?,
+			favicon_url=?,
+			login_title=?,
+			login_subtitle=?,
+			brand_name=?,
+			custom_domain=?,
+			subdomain=?,
+			contract_title=?,
+			contract_body=?,
+			contract_status=?,
+			notes=?,
+			monthly_fee=?,
+			plan_equivalent=?,
+			starts_at=?,
+			expires_at=?,
+			updated_at=?
 		WHERE id=?
 	`,
-		a.Name, a.Email, a.Phone, a.Status, a.LogoURL, a.BrandColor, a.BrandName,
-		a.CustomDomain, a.Subdomain, a.ContractTitle, a.ContractBody, a.ContractStatus,
-		a.Notes, a.MonthlyFee, a.PlanEquivalent, a.StartsAt, a.ExpiresAt, a.UpdatedAt,
+		a.Name,
+		a.Email,
+		a.Phone,
+		a.Status,
+		a.LogoURL,
+		a.BrandColor,
+		a.SecondaryColor,
+		a.LoginBackground,
+		a.FaviconURL,
+		a.LoginTitle,
+		a.LoginSubtitle,
+		a.BrandName,
+		a.CustomDomain,
+		a.Subdomain,
+		a.ContractTitle,
+		a.ContractBody,
+		a.ContractStatus,
+		a.Notes,
+		a.MonthlyFee,
+		a.PlanEquivalent,
+		a.StartsAt,
+		a.ExpiresAt,
+		a.UpdatedAt,
 		a.ID,
 	)
 
@@ -188,7 +330,7 @@ func (s *AgencyService) Update(a Agency) error {
 }
 
 func (s *AgencyService) Delete(id string) error {
-	_, err := s.DB.Exec(`DELETE FROM agencies WHERE id=?`, id)
+	_, err := s.DB.Exec(`DELETE FROM agencies WHERE id=?`, strings.TrimSpace(id))
 	return err
 }
 
@@ -207,19 +349,20 @@ func (s *AgencyService) Activate(id string, months int) error {
 		    expires_at=?,
 		    updated_at=?
 		WHERE id=?
-	`, now, expires, now, id)
+	`, now, expires, now, strings.TrimSpace(id))
 
 	return err
 }
 
 func (s *AgencyService) Suspend(id string) error {
 	now := time.Now()
+
 	_, err := s.DB.Exec(`
 		UPDATE agencies
 		SET status='suspended',
 		    updated_at=?
 		WHERE id=?
-	`, now, id)
+	`, now, strings.TrimSpace(id))
 
 	return err
 }
@@ -262,16 +405,21 @@ func (s *AgencyService) SignContract(id, signedBy, signedEmail, signature, ip st
 		strings.TrimSpace(signedBy),
 		strings.TrimSpace(signedEmail),
 		strings.TrimSpace(signature),
-		ip,
+		strings.TrimSpace(ip),
 		now,
 		now,
-		id,
+		strings.TrimSpace(id),
 	)
 
 	return err
 }
 
 func (s *AgencyService) SavePrices(agencyID string, prices []AgencyPlanPrice) error {
+	agencyID = strings.TrimSpace(agencyID)
+	if agencyID == "" {
+		return errors.New("agency id required")
+	}
+
 	tx, err := s.DB.Begin()
 	if err != nil {
 		return err
@@ -285,11 +433,17 @@ func (s *AgencyService) SavePrices(agencyID string, prices []AgencyPlanPrice) er
 	now := time.Now()
 
 	for _, p := range prices {
+		p.PlanSlug = strings.TrimSpace(p.PlanSlug)
+		p.BillingCycle = strings.TrimSpace(p.BillingCycle)
+
 		if p.ID == "" {
 			p.ID = uuid.NewString()
 		}
 		if p.BillingCycle == "" {
 			p.BillingCycle = "monthly"
+		}
+		if p.PlanSlug == "" {
+			continue
 		}
 
 		enabled := 0
@@ -327,13 +481,14 @@ func (s *AgencyService) Prices(agencyID string) ([]AgencyPlanPrice, error) {
 		FROM agency_plan_prices
 		WHERE agency_id=?
 		ORDER BY plan_slug ASC
-	`, agencyID)
+	`, strings.TrimSpace(agencyID))
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
 	out := []AgencyPlanPrice{}
+
 	for rows.Next() {
 		var p AgencyPlanPrice
 		var enabled int
@@ -356,7 +511,7 @@ func (s *AgencyService) Prices(agencyID string) ([]AgencyPlanPrice, error) {
 		out = append(out, p)
 	}
 
-	return out, nil
+	return out, rows.Err()
 }
 
 func (s *AgencyService) AgencyPrice(agencyID, planSlug, billingCycle string) (float64, bool) {
@@ -372,38 +527,17 @@ func (s *AgencyService) AgencyPrice(agencyID, planSlug, billingCycle string) (fl
 		FROM agency_plan_prices
 		WHERE agency_id=? AND plan_slug=? AND billing_cycle=?
 		LIMIT 1
-	`, agencyID, planSlug, billingCycle).Scan(&price, &enabled)
+	`,
+		strings.TrimSpace(agencyID),
+		strings.TrimSpace(planSlug),
+		strings.TrimSpace(billingCycle),
+	).Scan(&price, &enabled)
 
 	if err != nil || enabled != 1 || price <= 0 {
 		return 0, false
 	}
 
 	return price, true
-}
-
-func (s *AgencyService) GetBySubdomain(slug string) (Agency, error) {
-	var a Agency
-
-	slug = strings.TrimSpace(slug)
-
-	err := s.DB.QueryRow(`
-		SELECT id, name, email, phone, status, logo_url, brand_color, brand_name,
-		       custom_domain, subdomain, contract_title, contract_body, contract_status,
-		       contract_signed_by, contract_signed_email, contract_signature, contract_signed_ip,
-		       contract_signed_at, notes, monthly_fee, plan_equivalent, starts_at, expires_at,
-		       created_at, updated_at
-		FROM agencies
-		WHERE lower(subdomain)=lower(?)
-		LIMIT 1
-	`, slug).Scan(
-		&a.ID, &a.Name, &a.Email, &a.Phone, &a.Status, &a.LogoURL, &a.BrandColor, &a.BrandName,
-		&a.CustomDomain, &a.Subdomain, &a.ContractTitle, &a.ContractBody, &a.ContractStatus,
-		&a.ContractSignedBy, &a.ContractSignedEmail, &a.ContractSignature, &a.ContractSignedIP,
-		&a.ContractSignedAt, &a.Notes, &a.MonthlyFee, &a.PlanEquivalent, &a.StartsAt, &a.ExpiresAt,
-		&a.CreatedAt, &a.UpdatedAt,
-	)
-
-	return a, err
 }
 
 func DefaultAgencyContract(agencyName string) string {
