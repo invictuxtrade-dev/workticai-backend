@@ -141,17 +141,21 @@ func (s *AgencyService) Create(a Agency) (Agency, error) {
 		INSERT INTO agencies (
 			id, name, email, phone, status,
 			logo_url, brand_color, secondary_color, login_background, favicon_url,
-			login_title, login_subtitle, brand_name,
+			login_title, login_subtitle,
+			admin_name, admin_email, last_temp_password, last_password_reset,
+			brand_name,
 			custom_domain, subdomain,
 			contract_title, contract_body, contract_status,
 			contract_signed_by, contract_signed_email, contract_signature, contract_signed_ip,
 			contract_signed_at, notes, monthly_fee, plan_equivalent, starts_at, expires_at,
 			created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		a.ID, a.Name, a.Email, a.Phone, a.Status,
 		a.LogoURL, a.BrandColor, a.SecondaryColor, a.LoginBackground, a.FaviconURL,
-		a.LoginTitle, a.LoginSubtitle, a.BrandName,
+		a.LoginTitle, a.LoginSubtitle,
+		a.AdminName, a.AdminEmail, a.LastTempPassword, a.LastPasswordReset,
+		a.BrandName,
 		a.CustomDomain, a.Subdomain,
 		a.ContractTitle, a.ContractBody, a.ContractStatus,
 		a.ContractSignedBy, a.ContractSignedEmail, a.ContractSignature, a.ContractSignedIP,
@@ -180,6 +184,10 @@ func scanAgency(scanner interface {
 		&a.FaviconURL,
 		&a.LoginTitle,
 		&a.LoginSubtitle,
+		&a.AdminName,
+		&a.AdminEmail,
+		&a.LastTempPassword,
+		&a.LastPasswordReset,
 		&a.BrandName,
 		&a.CustomDomain,
 		&a.Subdomain,
@@ -206,7 +214,9 @@ func scanAgency(scanner interface {
 const agencySelectFields = `
 	id, name, email, phone, status,
 	logo_url, brand_color, secondary_color, login_background, favicon_url,
-	login_title, login_subtitle, brand_name,
+	login_title, login_subtitle,
+	admin_name, admin_email, last_temp_password, last_password_reset,
+	brand_name,
 	custom_domain, subdomain,
 	contract_title, contract_body, contract_status,
 	contract_signed_by, contract_signed_email, contract_signature, contract_signed_ip,
@@ -293,6 +303,10 @@ func (s *AgencyService) Update(a Agency) error {
 			favicon_url=?,
 			login_title=?,
 			login_subtitle=?,
+			admin_name=?,
+			admin_email=?,
+			last_temp_password=?,
+			last_password_reset=?,
 			brand_name=?,
 			custom_domain=?,
 			subdomain=?,
@@ -318,6 +332,10 @@ func (s *AgencyService) Update(a Agency) error {
 		a.FaviconURL,
 		a.LoginTitle,
 		a.LoginSubtitle,
+		a.AdminName,
+		a.AdminEmail,
+		a.LastTempPassword,
+		a.LastPasswordReset,
 		a.BrandName,
 		a.CustomDomain,
 		a.Subdomain,
@@ -545,6 +563,42 @@ func (s *AgencyService) AgencyPrice(agencyID, planSlug, billingCycle string) (fl
 	}
 
 	return price, true
+}
+
+func (s *AgencyService) SaveAccessData(agencyID, adminName, adminEmail, tempPassword string) error {
+	now := time.Now()
+
+	_, err := s.DB.Exec(`
+		UPDATE agencies
+		SET admin_name=?,
+		    admin_email=?,
+		    last_temp_password=?,
+		    last_password_reset=?,
+		    updated_at=?
+		WHERE id=?
+	`,
+		strings.TrimSpace(adminName),
+		strings.TrimSpace(adminEmail),
+		strings.TrimSpace(tempPassword),
+		now,
+		now,
+		strings.TrimSpace(agencyID),
+	)
+
+	return err
+}
+
+func (s *AgencyService) ClearTempPassword(agencyID string) error {
+	now := time.Now()
+
+	_, err := s.DB.Exec(`
+		UPDATE agencies
+		SET last_temp_password='',
+		    updated_at=?
+		WHERE id=?
+	`, now, strings.TrimSpace(agencyID))
+
+	return err
 }
 
 func DefaultAgencyContract(agencyName string) string {
