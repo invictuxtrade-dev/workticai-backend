@@ -693,6 +693,20 @@ func migrate(db *sql.DB) error {
 		updated_at TIMESTAMP NOT NULL
 	);`,
 
+	`CREATE TABLE IF NOT EXISTS client_licenses (
+    id TEXT PRIMARY KEY,
+    agency_id TEXT,
+    client_id TEXT,
+    plan_slug TEXT,
+    amount REAL,
+    status TEXT,
+    payment_link_id TEXT,
+    starts_at DATETIME,
+    expires_at DATETIME,
+    created_at DATETIME,
+    updated_at DATETIME
+	);`,
+
 		`CREATE INDEX IF NOT EXISTS idx_assistant_messages_client_id ON assistant_messages(client_id);`,
 
 		`CREATE INDEX IF NOT EXISTS idx_social_jobs_status_run_at ON social_jobs(status, run_at);`,

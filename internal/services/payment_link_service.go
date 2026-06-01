@@ -31,6 +31,8 @@ type PaymentLink struct {
 	ApprovedAt      *time.Time `json:"approved_at"`
 	ApprovedBy      string     `json:"approved_by"`
 	RejectionReason string     `json:"rejection_reason"`
+	PlanSlug string `json:"plan_slug"`
+	TargetClientID string `json:"target_client_id"`
 	PublicURL       string     `json:"public_url"`
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`

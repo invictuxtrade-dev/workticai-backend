@@ -3737,6 +3737,48 @@ func (s *Server) handleApprovePaymentLink(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	link, _ := s.PaymentLinks.Get(id)
+
+if link.PaymentScope == "client_license" {
+
+    expiresAt := time.Now().AddDate(0, 1, 0)
+
+    _, _ = s.DB.Exec(`
+        UPDATE clients
+        SET
+            plan=?,
+            status='active',
+            updated_at=CURRENT_TIMESTAMP
+        WHERE id=?
+    `,
+        link.PlanSlug,
+        link.TargetClientID,
+    )
+
+    _, _ = s.DB.Exec(`
+        UPDATE users
+        SET status='active'
+        WHERE client_id=?
+    `,
+        link.TargetClientID,
+    )
+
+    _, _ = s.DB.Exec(`
+        UPDATE client_licenses
+        SET
+            status='active',
+            starts_at=?,
+            expires_at=?,
+            updated_at=?
+        WHERE payment_link_id=?
+    `,
+        time.Now(),
+        expiresAt,
+        time.Now(),
+        link.ID,
+    )
+	}
+
 	link, err := s.PaymentLinks.Get(id)
 
 	if err == nil &&

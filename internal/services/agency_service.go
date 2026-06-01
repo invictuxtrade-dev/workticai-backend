@@ -601,6 +601,44 @@ func (s *AgencyService) ClearTempPassword(agencyID string) error {
 	return err
 }
 
+func (s *AgencyService) CreateClientLicense(
+    agencyID string,
+    clientID string,
+    planSlug string,
+    amount float64,
+    paymentLinkID string,
+) error {
+
+    now := time.Now()
+
+    _, err := s.DB.Exec(`
+        INSERT INTO client_licenses (
+            id,
+            agency_id,
+            client_id,
+            plan_slug,
+            amount,
+            status,
+            payment_link_id,
+            created_at,
+            updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+        uuid.NewString(),
+        agencyID,
+        clientID,
+        planSlug,
+        amount,
+        "pending",
+        paymentLinkID,
+        now,
+        now,
+    )
+
+    return err
+}
+
 func DefaultAgencyContract(agencyName string) string {
 	return `CONTRATO COMERCIAL DE AGENCIA WORKTIC AI
 
