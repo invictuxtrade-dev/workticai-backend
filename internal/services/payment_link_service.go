@@ -137,7 +137,8 @@ func (s *PaymentLinkService) List(clientID string) ([]PaymentLink, error) {
 	rows, err := s.DB.Query(`
 		SELECT id, client_id, created_by, concept, description, amount, currency,
 		       payment_method, wallet_address, customer_name, customer_email,
-		       customer_phone, tx_hash, status, expires_at, paid_at, approved_at,
+		       customer_phone, tx_hash, status, agency_id, payment_scope,
+		       expires_at, paid_at, approved_at,
 		       approved_by, rejection_reason, created_at, updated_at
 		FROM payment_links
 		WHERE (? = '' OR client_id = ?)
@@ -149,8 +150,10 @@ func (s *PaymentLinkService) List(clientID string) ([]PaymentLink, error) {
 	defer rows.Close()
 
 	out := []PaymentLink{}
+
 	for rows.Next() {
 		var x PaymentLink
+
 		if err := rows.Scan(
 			&x.ID,
 			&x.ClientID,
@@ -166,6 +169,8 @@ func (s *PaymentLinkService) List(clientID string) ([]PaymentLink, error) {
 			&x.CustomerPhone,
 			&x.TxHash,
 			&x.Status,
+			&x.AgencyID,
+			&x.PaymentScope,
 			&x.ExpiresAt,
 			&x.PaidAt,
 			&x.ApprovedAt,
@@ -176,10 +181,12 @@ func (s *PaymentLinkService) List(clientID string) ([]PaymentLink, error) {
 		); err != nil {
 			return nil, err
 		}
+
+		x.PublicURL = "/pay/" + x.ID
 		out = append(out, x)
 	}
 
-	return out, nil
+	return out, rows.Err()
 }
 
 func (s *PaymentLinkService) Get(id string) (PaymentLink, error) {
@@ -188,7 +195,8 @@ func (s *PaymentLinkService) Get(id string) (PaymentLink, error) {
 	err := s.DB.QueryRow(`
 		SELECT id, client_id, created_by, concept, description, amount, currency,
 		       payment_method, wallet_address, customer_name, customer_email,
-		       customer_phone, tx_hash, status, expires_at, paid_at, approved_at,
+		       customer_phone, tx_hash, status, agency_id, payment_scope,
+		       expires_at, paid_at, approved_at,
 		       approved_by, rejection_reason, created_at, updated_at
 		FROM payment_links
 		WHERE id=?
@@ -208,6 +216,8 @@ func (s *PaymentLinkService) Get(id string) (PaymentLink, error) {
 		&x.CustomerPhone,
 		&x.TxHash,
 		&x.Status,
+		&x.AgencyID,
+		&x.PaymentScope,
 		&x.ExpiresAt,
 		&x.PaidAt,
 		&x.ApprovedAt,
@@ -217,6 +227,7 @@ func (s *PaymentLinkService) Get(id string) (PaymentLink, error) {
 		&x.UpdatedAt,
 	)
 
+	x.PublicURL = "/pay/" + x.ID
 	return x, err
 }
 
