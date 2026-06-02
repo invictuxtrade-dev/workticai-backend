@@ -1756,7 +1756,7 @@ func (s *Server) handleRegisterClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client, err := s.Manager.CreateClient(body.CompanyName, body.Email, body.Phone, "")
+	client, err := s.Manager.CreateClient("", body.CompanyName, body.Email, body.Phone, "")
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
