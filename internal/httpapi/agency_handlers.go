@@ -36,11 +36,12 @@ func (s *Server) handleCreateAgency(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	agencyInput := body.Agency
+	
     agencyInput.Status = "pending"
 	agencyInput.ContractStatus = "draft"
 	agencyInput.StartsAt = nil
 	agencyInput.ExpiresAt = nil
+	agencyInput := body.Agency
 	item, err := s.Agencies.Create(agencyInput)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{
@@ -85,7 +86,7 @@ func (s *Server) handleCreateAgency(w http.ResponseWriter, r *http.Request) {
 		item.Email,
 		item.Phone,
 		item.PlanEquivalent,
-		"active",
+		"pending_license",
 	)
 
 	if err != nil {
