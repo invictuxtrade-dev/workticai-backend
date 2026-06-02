@@ -144,7 +144,7 @@ func (s *Server) routes() {
 	secured.HandleFunc("/subscriptions/pending", requireRole("admin")(s.handlePendingSubscriptions)).Methods("GET", "OPTIONS")
 	secured.HandleFunc("/subscriptions/{id}/approve", requireRole("admin")(s.handleApproveSubscription)).Methods("POST", "OPTIONS")
     secured.HandleFunc("/payment-links", s.handleListPaymentLinks).Methods("GET", "OPTIONS")
-	secured.HandleFunc("/payment-links", requireRole("admin")(s.handleCreatePaymentLink)).Methods("POST", "OPTIONS")
+	secured.HandleFunc("/payment-links", requireRole("admin", "agency_admin")(s.handleCreatePaymentLink)).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/payment-links/{id}/approve", requireRole("admin")(s.handleApprovePaymentLink)).Methods("POST", "OPTIONS")
 	secured.HandleFunc("/payment-links/{id}/reject", requireRole("admin")(s.handleRejectPaymentLink)).Methods("POST", "OPTIONS")
 
@@ -3767,10 +3767,61 @@ func (s *Server) handleCreatePaymentLink(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if u.Role != "admin" {
-		body.ClientID = u.ClientID
-	}
 	body.CreatedBy = u.ID
+
+	if u.Role == "agency_admin" {
+		if strings.TrimSpace(body.TargetClientID) == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "target_client_id required"})
+			return
+		}
+
+		if strings.TrimSpace(body.PlanSlug) == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "plan_slug required"})
+			return
+		}
+
+		var clientAgencyID string
+		err := s.DB.QueryRow(`
+			SELECT COALESCE(agency_id, '')
+			FROM clients
+			WHERE id=?
+		`, body.TargetClientID).Scan(&clientAgencyID)
+
+		if err != nil || clientAgencyID != u.AgencyID {
+			writeJSON(w, http.StatusForbidden, map[string]any{
+				"error": "este cliente no pertenece a tu agencia",
+			})
+			return
+		}
+
+		var agencyPrice float64
+		err = s.DB.QueryRow(`
+			SELECT agency_price
+			FROM agency_plan_prices
+			WHERE agency_id=? AND plan_slug=? AND enabled=1
+			LIMIT 1
+		`, u.AgencyID, body.PlanSlug).Scan(&agencyPrice)
+
+		if err != nil || agencyPrice <= 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]any{
+				"error": "no hay precio acordado para este plan",
+			})
+			return
+		}
+
+		body.AgencyID = u.AgencyID
+		body.ClientID = u.ClientID
+		body.PaymentScope = "client_license"
+		body.Amount = agencyPrice
+		body.Currency = "USDT"
+		body.Concept = "Licencia cliente agencia - " + body.PlanSlug
+	}
+
+	if u.Role == "admin" {
+		if strings.TrimSpace(body.PaymentScope) == "" {
+			body.PaymentScope = "client"
+		}
+	}
 
 	publicBaseURL := strings.TrimRight(os.Getenv("PUBLIC_APP_URL"), "/")
 	if publicBaseURL == "" {
@@ -3852,7 +3903,40 @@ func (s *Server) handleApprovePaymentLink(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if link.PaymentScope == "agency_license" {
+		agency, err := s.Agencies.Get(link.AgencyID)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "agency not found"})
+			return
+		}
+
+		if agency.ContractStatus != "signed" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{
+				"error": "la agencia debe firmar el contrato antes de activar la licencia",
+			})
+			return
+		}
+
+		if err := s.Agencies.Activate(link.AgencyID, 1); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{"success": true})
+		return
+	}
+
 	if link.PaymentScope == "client_license" {
+		if strings.TrimSpace(link.TargetClientID) == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "target_client_id required"})
+			return
+		}
+
+		if strings.TrimSpace(link.PlanSlug) == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "plan_slug required"})
+			return
+		}
+
 		now := time.Now()
 		expiresAt := now.AddDate(0, 1, 0)
 
@@ -3862,10 +3946,7 @@ func (s *Server) handleApprovePaymentLink(w http.ResponseWriter, r *http.Request
 			    status='active',
 			    updated_at=CURRENT_TIMESTAMP
 			WHERE id=?
-		`,
-			link.PlanSlug,
-			link.TargetClientID,
-		)
+		`, link.PlanSlug, link.TargetClientID)
 
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
@@ -3876,9 +3957,7 @@ func (s *Server) handleApprovePaymentLink(w http.ResponseWriter, r *http.Request
 			UPDATE users
 			SET status='active'
 			WHERE client_id=?
-		`,
-			link.TargetClientID,
-		)
+		`, link.TargetClientID)
 
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
@@ -3886,24 +3965,22 @@ func (s *Server) handleApprovePaymentLink(w http.ResponseWriter, r *http.Request
 		}
 
 		_, _ = s.DB.Exec(`
-			UPDATE client_licenses
-			SET status='active',
-			    starts_at=?,
-			    expires_at=?,
-			    updated_at=?
-			WHERE payment_link_id=?
+			INSERT INTO client_licenses (
+				id, agency_id, client_id, plan_slug, amount, status,
+				payment_link_id, starts_at, expires_at, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)
 		`,
+			uuid.NewString(),
+			link.AgencyID,
+			link.TargetClientID,
+			link.PlanSlug,
+			link.Amount,
+			link.ID,
 			now,
 			expiresAt,
 			now,
-			link.ID,
+			now,
 		)
-	}
-
-	if link.PaymentScope == "agency_license" && strings.TrimSpace(link.AgencyID) != "" {
-		if s.Agencies != nil {
-			_ = s.Agencies.Activate(link.AgencyID, 1)
-		}
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"success": true})

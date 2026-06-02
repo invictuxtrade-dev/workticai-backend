@@ -37,7 +37,10 @@ func (s *Server) handleCreateAgency(w http.ResponseWriter, r *http.Request) {
 	}
 
 	agencyInput := body.Agency
-
+    agencyInput.Status = "pending"
+	agencyInput.ContractStatus = "draft"
+	agencyInput.StartsAt = nil
+	agencyInput.ExpiresAt = nil
 	item, err := s.Agencies.Create(agencyInput)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{
