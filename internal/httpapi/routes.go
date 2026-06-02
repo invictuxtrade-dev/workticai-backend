@@ -3846,63 +3846,61 @@ func (s *Server) handleApprovePaymentLink(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	link, _ := s.PaymentLinks.Get(id)
-
-if link.PaymentScope == "client_license" {
-
-   now := time.Now()
-expiresAt := now.AddDate(0, 1, 0)
-
-_, err = s.DB.Exec(`
-	UPDATE clients
-	SET plan=?,
-	    status='active',
-	    updated_at=CURRENT_TIMESTAMP
-	WHERE id=?
-`,
-	link.PlanSlug,
-	link.TargetClientID,
-)
-
-if err != nil {
-	writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
-	return
-}
-
-_, err = s.DB.Exec(`
-	UPDATE users
-	SET status='active'
-	WHERE client_id=?
-`,
-	link.TargetClientID,
-)
-
-if err != nil {
-	writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
-	return
-}
-
-_, _ = s.DB.Exec(`
-	UPDATE client_licenses
-	SET status='active',
-	    starts_at=?,
-	    expires_at=?,
-	    updated_at=?
-	WHERE payment_link_id=?
-`,
-	now,
-	expiresAt,
-	now,
-	link.ID,
-)
+	link, err := s.PaymentLinks.Get(id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
 	}
 
-	link, err := s.PaymentLinks.Get(id)
+	if link.PaymentScope == "client_license" {
+		now := time.Now()
+		expiresAt := now.AddDate(0, 1, 0)
 
-	if err == nil &&
-	link.PaymentScope == "agency_license" &&
-	strings.TrimSpace(link.AgencyID) != "" {
+		_, err := s.DB.Exec(`
+			UPDATE clients
+			SET plan=?,
+			    status='active',
+			    updated_at=CURRENT_TIMESTAMP
+			WHERE id=?
+		`,
+			link.PlanSlug,
+			link.TargetClientID,
+		)
 
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+
+		_, err = s.DB.Exec(`
+			UPDATE users
+			SET status='active'
+			WHERE client_id=?
+		`,
+			link.TargetClientID,
+		)
+
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+
+		_, _ = s.DB.Exec(`
+			UPDATE client_licenses
+			SET status='active',
+			    starts_at=?,
+			    expires_at=?,
+			    updated_at=?
+			WHERE payment_link_id=?
+		`,
+			now,
+			expiresAt,
+			now,
+			link.ID,
+		)
+	}
+
+	if link.PaymentScope == "agency_license" && strings.TrimSpace(link.AgencyID) != "" {
 		if s.Agencies != nil {
 			_ = s.Agencies.Activate(link.AgencyID, 1)
 		}
