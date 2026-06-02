@@ -93,37 +93,41 @@ func (s *PaymentLinkService) Create(x PaymentLink, publicBaseURL string) (Paymen
 	x.UpdatedAt = now
 
 	_, err := s.DB.Exec(`
-		INSERT INTO payment_links (
-			id, client_id, created_by, concept, description, amount, currency,
-			payment_method, wallet_address, customer_name, customer_email,
-			customer_phone, tx_hash, status, agency_id, payment_scope, expires_at, paid_at, approved_at,
-			approved_by, rejection_reason, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`,
-		x.ID,
-		x.ClientID,
-		x.CreatedBy,
-		x.Concept,
-		x.Description,
-		x.Amount,
-		x.Currency,
-		x.PaymentMethod,
-		x.WalletAddress,
-		x.CustomerName,
-		x.CustomerEmail,
-		x.CustomerPhone,
-		x.TxHash,
-		x.Status,
-		x.AgencyID,
-		x.PaymentScope,
-		x.ExpiresAt,
-		x.PaidAt,
-		x.ApprovedAt,
-		x.ApprovedBy,
-		x.RejectionReason,
-		x.CreatedAt,
-		x.UpdatedAt,
-	)
+	INSERT INTO payment_links (
+		id, client_id, created_by, concept, description, amount, currency,
+		payment_method, wallet_address, customer_name, customer_email,
+		customer_phone, tx_hash, status, agency_id, payment_scope,
+		target_client_id, plan_slug,
+		expires_at, paid_at, approved_at,
+		approved_by, rejection_reason, created_at, updated_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`,
+	x.ID,
+	x.ClientID,
+	x.CreatedBy,
+	x.Concept,
+	x.Description,
+	x.Amount,
+	x.Currency,
+	x.PaymentMethod,
+	x.WalletAddress,
+	x.CustomerName,
+	x.CustomerEmail,
+	x.CustomerPhone,
+	x.TxHash,
+	x.Status,
+	x.AgencyID,
+	x.PaymentScope,
+	x.TargetClientID,
+	x.PlanSlug,
+	x.ExpiresAt,
+	x.PaidAt,
+	x.ApprovedAt,
+	x.ApprovedBy,
+	x.RejectionReason,
+	x.CreatedAt,
+	x.UpdatedAt,
+)
 
 	if err != nil {
 		return PaymentLink{}, err
@@ -136,14 +140,15 @@ func (s *PaymentLinkService) Create(x PaymentLink, publicBaseURL string) (Paymen
 func (s *PaymentLinkService) List(clientID string) ([]PaymentLink, error) {
 	rows, err := s.DB.Query(`
 		SELECT id, client_id, created_by, concept, description, amount, currency,
-		       payment_method, wallet_address, customer_name, customer_email,
-		       customer_phone, tx_hash, status, agency_id, payment_scope,
-		       expires_at, paid_at, approved_at,
-		       approved_by, rejection_reason, created_at, updated_at
-		FROM payment_links
-		WHERE (? = '' OR client_id = ?)
-		ORDER BY created_at DESC
-	`, clientID, clientID)
+	       payment_method, wallet_address, customer_name, customer_email,
+	       customer_phone, tx_hash, status, agency_id, payment_scope,
+	       target_client_id, plan_slug,
+	       expires_at, paid_at, approved_at,
+	       approved_by, rejection_reason, created_at, updated_at
+	FROM payment_links
+	WHERE (? = '' OR client_id = ?)
+	ORDER BY created_at DESC
+`, clientID, clientID)
 	if err != nil {
 		return nil, err
 	}
@@ -171,6 +176,8 @@ func (s *PaymentLinkService) List(clientID string) ([]PaymentLink, error) {
 			&x.Status,
 			&x.AgencyID,
 			&x.PaymentScope,
+			&x.TargetClientID,
+			&x.PlanSlug,
 			&x.ExpiresAt,
 			&x.PaidAt,
 			&x.ApprovedAt,
@@ -195,7 +202,7 @@ func (s *PaymentLinkService) Get(id string) (PaymentLink, error) {
 	err := s.DB.QueryRow(`
 		SELECT id, client_id, created_by, concept, description, amount, currency,
 		       payment_method, wallet_address, customer_name, customer_email,
-		       customer_phone, tx_hash, status, agency_id, payment_scope,
+		       customer_phone, tx_hash, status, agency_id, payment_scope,target_client_id, plan_slug,
 		       expires_at, paid_at, approved_at,
 		       approved_by, rejection_reason, created_at, updated_at
 		FROM payment_links
@@ -218,6 +225,8 @@ func (s *PaymentLinkService) Get(id string) (PaymentLink, error) {
 		&x.Status,
 		&x.AgencyID,
 		&x.PaymentScope,
+		&x.TargetClientID,
+		&x.PlanSlug,
 		&x.ExpiresAt,
 		&x.PaidAt,
 		&x.ApprovedAt,

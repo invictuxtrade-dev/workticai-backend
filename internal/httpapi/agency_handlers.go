@@ -85,9 +85,9 @@ func (s *Server) handleCreateAgency(w http.ResponseWriter, r *http.Request) {
 		item.Name,
 		item.Email,
 		item.Phone,
-		item.PlanEquivalent,
+		"",
 		"pending_license",
-	)
+		)
 
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{
@@ -111,7 +111,20 @@ func (s *Server) handleCreateAgency(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+    _, err = s.DB.Exec(`
+	UPDATE users
+	SET status='pending_agreement'
+	WHERE id=?
+`, adminUser.ID)
 
+if err != nil {
+	writeJSON(w, http.StatusInternalServerError, map[string]any{
+		"error": "agency admin created but could not be set pending: " + err.Error(),
+	})
+	return
+}
+
+adminUser.Status = "pending_agreement"
 	loginURL := "/a/" + strings.TrimSpace(item.Subdomain)
 	if strings.TrimSpace(item.Subdomain) == "" {
 		loginURL = "/"
@@ -172,18 +185,93 @@ func (s *Server) handleGetAgency(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleActivateAgency(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Months int `json:"months"`
-	}
+	agencyID := mux.Vars(r)["id"]
 
-	_ = json.NewDecoder(r.Body).Decode(&body)
-
-	if err := s.Agencies.Activate(mux.Vars(r)["id"], body.Months); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+	agency, err := s.Agencies.Get(agencyID)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{
+			"error": "agency not found",
+		})
 		return
 	}
 
-	item, _ := s.Agencies.Get(mux.Vars(r)["id"])
+	if agency.ContractStatus != "signed" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": "La agencia debe firmar contrato antes de activarse.",
+		})
+		return
+	}
+
+	var approvedCount int
+	err = s.DB.QueryRow(`
+		SELECT COUNT(*)
+		FROM payment_links
+		WHERE agency_id=?
+		  AND payment_scope='agency_license'
+		  AND status='approved'
+	`, agencyID).Scan(&approvedCount)
+
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	if approvedCount <= 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": "La agencia debe tener un pago de licencia aprobado.",
+		})
+		return
+	}
+
+	if err := s.Agencies.Activate(agencyID, 1); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	plan := strings.TrimSpace(agency.PlanEquivalent)
+	if plan == "" {
+		plan = "business"
+	}
+
+	_, err = s.DB.Exec(`
+		UPDATE clients
+		SET plan=?,
+		    status='active',
+		    updated_at=CURRENT_TIMESTAMP
+		WHERE agency_id=? AND email=?
+	`,
+		plan,
+		agencyID,
+		agency.Email,
+	)
+
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	_, err = s.DB.Exec(`
+		UPDATE users
+		SET status='active'
+		WHERE agency_id=? AND role='agency_admin'
+	`,
+		agencyID,
+	)
+
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	item, _ := s.Agencies.Get(agencyID)
 	writeJSON(w, http.StatusOK, item)
 }
 

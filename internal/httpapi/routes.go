@@ -3795,16 +3795,10 @@ func (s *Server) handleCreatePaymentLink(w http.ResponseWriter, r *http.Request)
 		}
 
 		var agencyPrice float64
-		err = s.DB.QueryRow(`
-			SELECT agency_price
-			FROM agency_plan_prices
-			WHERE agency_id=? AND plan_slug=? AND enabled=1
-			LIMIT 1
-		`, u.AgencyID, body.PlanSlug).Scan(&agencyPrice)
-
-		if err != nil || agencyPrice <= 0 {
+		agencyPrice, ok := s.Agencies.AgencyPrice(u.AgencyID, body.PlanSlug, "monthly")
+		if !ok {
 			writeJSON(w, http.StatusBadRequest, map[string]any{
-				"error": "no hay precio acordado para este plan",
+				"error": "no hay precio acordado para este plan o la agencia no está activa",
 			})
 			return
 		}
@@ -3912,12 +3906,41 @@ func (s *Server) handleApprovePaymentLink(w http.ResponseWriter, r *http.Request
 
 		if agency.ContractStatus != "signed" {
 			writeJSON(w, http.StatusBadRequest, map[string]any{
-				"error": "la agencia debe firmar el contrato antes de activar la licencia",
+				"error": "La agencia debe firmar contrato antes de activar la licencia.",
 			})
 			return
 		}
 
 		if err := s.Agencies.Activate(link.AgencyID, 1); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+
+		plan := strings.TrimSpace(agency.PlanEquivalent)
+		if plan == "" {
+			plan = "business"
+		}
+
+		_, err = s.DB.Exec(`
+			UPDATE clients
+			SET plan=?,
+			    status='active',
+			    updated_at=CURRENT_TIMESTAMP
+			WHERE agency_id=? AND email=?
+		`, plan, link.AgencyID, agency.Email)
+
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+
+		_, err = s.DB.Exec(`
+			UPDATE users
+			SET status='active'
+			WHERE agency_id=? AND role='agency_admin'
+		`, link.AgencyID)
+
+		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 			return
 		}

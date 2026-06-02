@@ -148,8 +148,12 @@ func (a *AuthService) Login(email, password string) (models.User, string, error)
 	)
 	if err != nil { return models.User{}, "", err }
 	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) != nil { return models.User{}, "", errors.New("invalid credentials") }
+	if agencyID != "" && role == "agency_admin" && status != "active" {
+	return models.User{}, "", errors.New("agencia pendiente de contrato y pago")
+	}
+
 	if agencyID != "" && role == "client_user" && status != "active" {
-	return models.User{}, "", errors.New("usuario pendiente de activación de licencia")
+		return models.User{}, "", errors.New("usuario pendiente de activación de licencia")
 	}
 	user := models.User{
 	ID: id,
