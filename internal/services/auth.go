@@ -78,6 +78,46 @@ func (a *AuthService) CreateUserWithAgency(clientID, agencyID, name, email, pass
 	return user, token, err
 }
 
+func (a *AuthService) CreatePendingUserWithAgency(clientID, agencyID, name, email, password, role string) (models.User, string, error) {
+	if role == "" {
+		role = "client_user"
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return models.User{}, "", err
+	}
+
+	id := uuid.NewString()
+	now := time.Now()
+
+	_, err = a.DB.Exec(`
+		INSERT INTO users (
+			id, client_id, agency_id, name, email, password_hash, role, status, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending_license', ?)
+	`,
+		id,
+		clientID,
+		agencyID,
+		name,
+		email,
+		string(hash),
+		role,
+		now,
+	)
+
+	if err != nil {
+		return models.User{}, "", err
+	}
+
+	user, err := a.GetUser(id)
+	if err != nil {
+		return models.User{}, "", err
+	}
+
+	return user, "", nil
+}
+
 func (a *AuthService) Login(email, password string) (models.User, string, error) {
 	var id, clientID, agencyID, name, hash, role, plan, status string
 	var created time.Time
@@ -108,6 +148,9 @@ func (a *AuthService) Login(email, password string) (models.User, string, error)
 	)
 	if err != nil { return models.User{}, "", err }
 	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) != nil { return models.User{}, "", errors.New("invalid credentials") }
+	if agencyID != "" && role == "client_user" && status != "active" {
+	return models.User{}, "", errors.New("usuario pendiente de activación de licencia")
+	}
 	user := models.User{
 	ID: id,
 	ClientID: clientID,

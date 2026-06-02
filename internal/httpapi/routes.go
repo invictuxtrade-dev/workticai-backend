@@ -290,67 +290,126 @@ func (s *Server) handleListClients(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) handleCreateClient(w http.ResponseWriter, r *http.Request) {
+	u := currentUser(r)
 
-    u := currentUser(r)
+	var body struct {
+		Name     string `json:"name"`
+		Email    string `json:"email"`
+		Phone    string `json:"phone"`
+		Plan     string `json:"plan"`
+		Password string `json:"password"`
+	}
 
-    var body struct {
-        Name  string `json:"name"`
-        Email string `json:"email"`
-        Phone string `json:"phone"`
-        Plan  string `json:"plan"`
-    }
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		return
+	}
 
-    if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-        writeJSON(w, http.StatusBadRequest, map[string]any{
-            "error": "invalid json",
-        })
-        return
-    }
+	if strings.TrimSpace(body.Name) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "name required"})
+		return
+	}
 
-    agencyID := ""
+	if strings.TrimSpace(body.Email) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "email required"})
+		return
+	}
 
-if u.Role == "agency_admin" {
-	agencyID = u.AgencyID
-}
+	agencyID := ""
+	clientStatus := "active"
+	clientPlan := strings.TrimSpace(body.Plan)
 
-c, err := s.Manager.CreateClient(
-	agencyID,
-	body.Name,
-	body.Email,
-	body.Phone,
-	body.Plan,
-)
+	if u.Role == "agency_admin" {
+		agencyID = u.AgencyID
+		clientStatus = "pending_license"
+		clientPlan = ""
+	}
 
-    if err != nil {
-        writeJSON(w, http.StatusInternalServerError, map[string]any{
-            "error": err.Error(),
-        })
-        return
-    }
+	c, err := s.Manager.CreateClient(
+		agencyID,
+		body.Name,
+		body.Email,
+		body.Phone,
+		clientPlan,
+	)
 
-    // SI ES AGENCIA
-    if u.Role == "agency_admin" {
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
 
-        _, err = s.DB.Exec(`
-            UPDATE clients
-            SET agency_id=?
-            WHERE id=?
-        `,
-            u.AgencyID,
-            c.ID,
-        )
+	_, err = s.DB.Exec(`
+		UPDATE clients
+		SET status=?, plan=?, agency_id=?, updated_at=CURRENT_TIMESTAMP
+		WHERE id=?
+	`,
+		clientStatus,
+		clientPlan,
+		agencyID,
+		c.ID,
+	)
 
-        if err != nil {
-            writeJSON(w, http.StatusInternalServerError, map[string]any{
-                "error": err.Error(),
-            })
-            return
-        }
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
 
-        c.AgencyID = u.AgencyID
-    }
+	c.Status = clientStatus
+	c.Plan = clientPlan
+	c.AgencyID = agencyID
 
-    writeJSON(w, http.StatusCreated, c)
+	userName := strings.TrimSpace(body.Name)
+	tempPassword := strings.TrimSpace(body.Password)
+
+	if tempPassword == "" {
+		tempPassword = "Client-" + uuid.NewString()[:8]
+	}
+
+	var createdUser any
+
+	if u.Role == "agency_admin" {
+		user, _, err := s.Auth.CreatePendingUserWithAgency(
+			c.ID,
+			u.AgencyID,
+			userName,
+			body.Email,
+			tempPassword,
+			"client_user",
+		)
+
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{
+				"error": "cliente creado pero no se pudo crear usuario: " + err.Error(),
+			})
+			return
+		}
+
+		createdUser = user
+	} else {
+		user, _, err := s.Auth.CreateUser(
+			c.ID,
+			userName,
+			body.Email,
+			tempPassword,
+			"client_user",
+		)
+
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{
+				"error": "cliente creado pero no se pudo crear usuario: " + err.Error(),
+			})
+			return
+		}
+
+		createdUser = user
+	}
+
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"client":             c,
+		"user":               createdUser,
+		"temporary_password": tempPassword,
+		"requires_license":   u.Role == "agency_admin",
+	})
 }
 
 func (s *Server) handleUpdateClient(w http.ResponseWriter, r *http.Request) {
@@ -396,6 +455,13 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
+
+	if u.Role == "agency_admin" {
+	writeJSON(w, http.StatusBadRequest, map[string]any{
+		"error": "Los usuarios de agencia se crean automáticamente al crear un cliente.",
+	})
+	return
+	}
 
 	var body struct {
 		ClientID string `json:"client_id"`
@@ -3784,42 +3850,51 @@ func (s *Server) handleApprovePaymentLink(w http.ResponseWriter, r *http.Request
 
 if link.PaymentScope == "client_license" {
 
-    expiresAt := time.Now().AddDate(0, 1, 0)
+   now := time.Now()
+expiresAt := now.AddDate(0, 1, 0)
 
-    _, _ = s.DB.Exec(`
-        UPDATE clients
-        SET
-            plan=?,
-            status='active',
-            updated_at=CURRENT_TIMESTAMP
-        WHERE id=?
-    `,
-        link.PlanSlug,
-        link.TargetClientID,
-    )
+_, err = s.DB.Exec(`
+	UPDATE clients
+	SET plan=?,
+	    status='active',
+	    updated_at=CURRENT_TIMESTAMP
+	WHERE id=?
+`,
+	link.PlanSlug,
+	link.TargetClientID,
+)
 
-    _, _ = s.DB.Exec(`
-        UPDATE users
-        SET status='active'
-        WHERE client_id=?
-    `,
-        link.TargetClientID,
-    )
+if err != nil {
+	writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+	return
+}
 
-    _, _ = s.DB.Exec(`
-        UPDATE client_licenses
-        SET
-            status='active',
-            starts_at=?,
-            expires_at=?,
-            updated_at=?
-        WHERE payment_link_id=?
-    `,
-        time.Now(),
-        expiresAt,
-        time.Now(),
-        link.ID,
-    )
+_, err = s.DB.Exec(`
+	UPDATE users
+	SET status='active'
+	WHERE client_id=?
+`,
+	link.TargetClientID,
+)
+
+if err != nil {
+	writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+	return
+}
+
+_, _ = s.DB.Exec(`
+	UPDATE client_licenses
+	SET status='active',
+	    starts_at=?,
+	    expires_at=?,
+	    updated_at=?
+	WHERE payment_link_id=?
+`,
+	now,
+	expiresAt,
+	now,
+	link.ID,
+)
 	}
 
 	link, err := s.PaymentLinks.Get(id)
