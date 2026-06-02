@@ -290,24 +290,60 @@ func (s *Server) handleListClients(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) handleCreateClient(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Name  string `json:"name"`
-		Email string `json:"email"`
-		Phone string `json:"phone"`
-		Plan  string `json:"plan"`
-	}
 
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
-		return
-	}
+    u := currentUser(r)
 
-	c, err := s.Manager.CreateClient(body.Name, body.Email, body.Phone, body.Plan)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
-		return
-	}
-	writeJSON(w, http.StatusCreated, c)
+    var body struct {
+        Name  string `json:"name"`
+        Email string `json:"email"`
+        Phone string `json:"phone"`
+        Plan  string `json:"plan"`
+    }
+
+    if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+        writeJSON(w, http.StatusBadRequest, map[string]any{
+            "error": "invalid json",
+        })
+        return
+    }
+
+    c, err := s.Manager.CreateClient(
+        body.Name,
+        body.Email,
+        body.Phone,
+        body.Plan,
+    )
+
+    if err != nil {
+        writeJSON(w, http.StatusInternalServerError, map[string]any{
+            "error": err.Error(),
+        })
+        return
+    }
+
+    // SI ES AGENCIA
+    if u.Role == "agency_admin" {
+
+        _, err = s.DB.Exec(`
+            UPDATE clients
+            SET agency_id=?
+            WHERE id=?
+        `,
+            u.AgencyID,
+            c.ID,
+        )
+
+        if err != nil {
+            writeJSON(w, http.StatusInternalServerError, map[string]any{
+                "error": err.Error(),
+            })
+            return
+        }
+
+        c.AgencyID = u.AgencyID
+    }
+
+    writeJSON(w, http.StatusCreated, c)
 }
 
 func (s *Server) handleUpdateClient(w http.ResponseWriter, r *http.Request) {
