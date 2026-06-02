@@ -307,12 +307,19 @@ func (s *Server) handleCreateClient(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    c, err := s.Manager.CreateClient(
-        body.Name,
-        body.Email,
-        body.Phone,
-        body.Plan,
-    )
+    agencyID := ""
+
+if u.Role == "agency_admin" {
+	agencyID = u.AgencyID
+}
+
+c, err := s.Manager.CreateClient(
+	agencyID,
+	body.Name,
+	body.Email,
+	body.Phone,
+	body.Plan,
+)
 
     if err != nil {
         writeJSON(w, http.StatusInternalServerError, map[string]any{

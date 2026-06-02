@@ -110,27 +110,56 @@ func (m *BotManager) Metrics(clientID string) (models.Metrics, error) {
 }
 
 func (m *BotManager) ListClients() ([]models.Client, error) {
-	rows, err := m.DB.Query(`SELECT id, name, email, phone, plan, status, created_at, updated_at FROM clients ORDER BY created_at DESC`)
+	rows, err := m.DB.Query(`
+		SELECT
+			id,
+			COALESCE(agency_id, ''),
+			name,
+			email,
+			phone,
+			plan,
+			status,
+			created_at,
+			updated_at
+		FROM clients
+		ORDER BY created_at DESC
+	`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
 	out := []models.Client{}
+
 	for rows.Next() {
 		var c models.Client
-		if err := rows.Scan(&c.ID, &c.Name, &c.Email, &c.Phone, &c.Plan, &c.Status, &c.CreatedAt, &c.UpdatedAt); err != nil {
+
+		if err := rows.Scan(
+			&c.ID,
+			&c.AgencyID,
+			&c.Name,
+			&c.Email,
+			&c.Phone,
+			&c.Plan,
+			&c.Status,
+			&c.CreatedAt,
+			&c.UpdatedAt,
+		); err != nil {
 			return nil, err
 		}
+
 		out = append(out, c)
 	}
-	return out, nil
+
+	return out, rows.Err()
 }
 
-func (m *BotManager) CreateClient(name, email, phone, plan string) (models.Client, error) {
+func (m *BotManager) CreateClient(agencyID, name, email, phone, plan string) (models.Client, error) {
 	now := time.Now()
+
 	c := models.Client{
 		ID:        uuid.NewString(),
+		AgencyID:  strings.TrimSpace(agencyID),
 		Name:      strings.TrimSpace(name),
 		Email:     strings.TrimSpace(email),
 		Phone:     strings.TrimSpace(phone),
@@ -139,14 +168,36 @@ func (m *BotManager) CreateClient(name, email, phone, plan string) (models.Clien
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
+
 	if c.Plan == "" {
 		c.Plan = "pro"
 	}
 
-	_, err := m.DB.Exec(
-		`INSERT INTO clients (id, name, email, phone, plan, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		c.ID, c.Name, c.Email, c.Phone, c.Plan, c.Status, c.CreatedAt, c.UpdatedAt,
+	_, err := m.DB.Exec(`
+		INSERT INTO clients (
+			id,
+			agency_id,
+			name,
+			email,
+			phone,
+			plan,
+			status,
+			created_at,
+			updated_at
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		c.ID,
+		c.AgencyID,
+		c.Name,
+		c.Email,
+		c.Phone,
+		c.Plan,
+		c.Status,
+		c.CreatedAt,
+		c.UpdatedAt,
 	)
+
 	return c, err
 }
 
