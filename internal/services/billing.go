@@ -455,7 +455,7 @@ func (b *BillingService) SeedDefaults() error {
 			"ads_campaigns_month": 999999,
 			"group_bots": 999,
 			"academy_courses": 999,
-			"storage_mb": 102400
+			"storage_mb": 102400,
 			"appointments_month": 1000
 		}`,
 
