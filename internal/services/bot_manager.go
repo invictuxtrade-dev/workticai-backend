@@ -441,11 +441,30 @@ func (m *BotManager) StartBot(id string) error {
 			_ = m.MarkBotDisconnected(id)
 
 		case *events.Message:
-			if v.Info.IsFromMe {
-				return
-			}
+		if v.Info.IsFromMe {
+			return
+		}
 
-			chatJID := v.Info.Chat.String()
+		chatJID := v.Info.Chat.String()
+
+		// Ignorar estados, broadcasts, canales, grupos y mensajes no conversacionales
+		if v.Info.Chat.Server == types.GroupServer ||
+			strings.HasSuffix(chatJID, "@g.us") ||
+			strings.Contains(chatJID, "status@broadcast") ||
+			strings.Contains(chatJID, "@broadcast") ||
+			strings.Contains(chatJID, "newsletter") ||
+			strings.TrimSpace(chatJID) == "" {
+			logger.Infof("mensaje no conversacional ignorado bot=%s chat=%s sender=%s", id, chatJID, v.Info.Sender.String())
+			return
+		}
+
+		text := extractIncomingText(v.Message)
+
+		// Ignorar eventos sin texto real: estados, imágenes sin caption, stickers, reacciones, updates, etc.
+		if strings.TrimSpace(text) == "" {
+			logger.Infof("mensaje vacío ignorado bot=%s chat=%s sender=%s", id, chatJID, v.Info.Sender.String())
+			return
+		}
 
 phone := m.ResolveRealPhoneFromMessage(client, v)
 
