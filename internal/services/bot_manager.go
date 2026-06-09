@@ -485,7 +485,6 @@ if strings.HasPrefix(phone, "235") {
 	phone = ""
 }
 			displayName := v.Info.PushName
-			text := extractIncomingText(v.Message)
 
 			if strings.TrimSpace(text) == "" {
 				return
