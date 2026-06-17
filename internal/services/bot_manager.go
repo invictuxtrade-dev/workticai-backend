@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -737,9 +739,26 @@ if strings.HasPrefix(phone, "235") {
 			}
 
 			targetJID := v.Info.Chat
-			_, sendErr := client.SendMessage(context.Background(), targetJID, &waProto.Message{
-				Conversation: proto.String(reply),
-			})
+			productImageURL := extractProductImageURL(cfg.SystemPrompt)
+
+			var sendErr error
+
+			if productImageURL != "" && shouldSendProductImage(text) {
+				sendErr = sendImageFromURL(client, targetJID, productImageURL, reply)
+
+				if sendErr != nil {
+					logger.Errorf("error sending product image to %s: %v", targetJID.String(), sendErr)
+
+					_, sendErr = client.SendMessage(context.Background(), targetJID, &waProto.Message{
+						Conversation: proto.String(reply),
+					})
+				}
+			} else {
+				_, sendErr = client.SendMessage(context.Background(), targetJID, &waProto.Message{
+					Conversation: proto.String(reply),
+				})
+			}
+
 			if sendErr != nil {
 				logger.Errorf("error sending auto-reply to %s: %v", targetJID.String(), sendErr)
 				return
@@ -1634,4 +1653,93 @@ func isValidRealPhone(phone string) bool {
 	}
 
 	return true
+}
+
+func extractProductImageURL(prompt string) string {
+	lines := strings.Split(prompt, "\n")
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		lower := strings.ToLower(line)
+
+		if strings.HasPrefix(lower, "product_image_url:") {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) == 2 {
+				return strings.TrimSpace(parts[1])
+			}
+		}
+	}
+
+	return ""
+}
+
+func shouldSendProductImage(text string) bool {
+	text = strings.ToLower(strings.TrimSpace(text))
+
+	keywords := []string{
+		"imagen",
+		"foto",
+		"producto",
+		"ver producto",
+		"muéstrame",
+		"muestrame",
+		"catálogo",
+		"catalogo",
+		"picture",
+		"photo",
+		"image",
+		"product",
+		"show me",
+	}
+
+	for _, k := range keywords {
+		if strings.Contains(text, k) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func sendImageFromURL(client *whatsmeow.Client, jid types.JID, imageURL string, caption string) error {
+	imageURL = strings.TrimSpace(imageURL)
+	if imageURL == "" {
+		return nil
+	}
+
+	resp, err := http.Get(imageURL)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("image download failed: %s", resp.Status)
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	uploaded, err := client.Upload(context.Background(), data, whatsmeow.MediaImage)
+	if err != nil {
+		return err
+	}
+
+	msg := &waProto.Message{
+		ImageMessage: &waProto.ImageMessage{
+			Caption:       proto.String(caption),
+			Mimetype:      proto.String(resp.Header.Get("Content-Type")),
+			URL:           proto.String(uploaded.URL),
+			DirectPath:    proto.String(uploaded.DirectPath),
+			MediaKey:      uploaded.MediaKey,
+			FileEncSHA256: uploaded.FileEncSHA256,
+			FileSHA256:    uploaded.FileSHA256,
+			FileLength:    proto.Uint64(uint64(len(data))),
+		},
+	}
+
+	_, err = client.SendMessage(context.Background(), jid, msg)
+	return err
 }
